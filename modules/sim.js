@@ -171,9 +171,21 @@ export function recomputeStats() {
   s.stockpileMax = STOCKPILE_TIERS[Math.min(L("stockpile"), STOCKPILE_TIERS.length - 1)];
 
   // ---- fleet ----
-  s.roverSpeed = C.ROVER_SPEED * Math.pow(1.05, L("roverSpeed")) * sb(b.roverSpeed) * Math.pow(1.3, W("permRoverSpeed"));
-  s.roverCapacity = CAPACITY_TIERS[Math.min(L("roverCapacity"), CAPACITY_TIERS.length - 1)];
+  // Drivetrain stacks on Rover Speed (+8%/level smooth on top of +5%/level tier).
+  s.roverSpeed = C.ROVER_SPEED
+    * Math.pow(1.05, L("roverSpeed"))
+    * Math.pow(1.08, L("drivetrain"))
+    * sb(b.roverSpeed)
+    * Math.pow(1.3, W("permRoverSpeed"));
+  // Cargo Bins is smooth +10%/level on top of the Capacity tier table.
+  s.roverCapacity = CAPACITY_TIERS[Math.min(L("roverCapacity"), CAPACITY_TIERS.length - 1)]
+    * Math.pow(1.10, L("cargoBins"));
   s.maxVisibleRovers = C.ROVER_VISIBLE_CAP + L("roverPads") * 50;
+  // Quick Load shaves load/unload time. Min 0.1s so rovers don't teleport.
+  const qlMult = Math.max(0.15, Math.pow(0.92, L("quickLoad"))); // .92^15 ≈ 0.286
+  s.loadTimeMult = qlMult;
+  // Convoy Logistics boosts background-fleet hauling for big fleets.
+  s.bgRoverMult = Math.pow(1.10, L("backgroundBoost"));
 
   // ---- refining (+10% per level) ----
   s.refineRate = C.BASE_REFINE_RATE * Math.pow(1.10, L("refineSpeed")) * sb(b.refine);
@@ -432,7 +444,8 @@ function bestDrillFor() {
 
 function runBackgroundFleet(dt) {
   if (state.bgRovers <= 0) return;
-  state.bgCarry += state.bgRovers * C.BG_ROVER_RATE * dt;
+  const bgMult = state.stats.bgRoverMult || 1;
+  state.bgCarry += state.bgRovers * C.BG_ROVER_RATE * bgMult * dt;
   let want = state.bgCarry;
   if (want < 1) return;
   const drills = state.drills;
@@ -535,7 +548,9 @@ export function step(dt = FIXED_DT) {
         break;
       }
       case "LOADING": {
-        r.loadT += dt / C.LOAD_TIME;
+        // Quick Load upgrade shortens this — divide normal load time by mult
+        const lt = Math.max(0.1, C.LOAD_TIME * (st.loadTimeMult || 1));
+        r.loadT += dt / lt;
         if (r.loadT >= 1) {
           r.loadT = 1;
           const d = drills[r.drillIndex];
@@ -551,7 +566,8 @@ export function step(dt = FIXED_DT) {
         break;
       }
       case "UNLOADING": {
-        r.loadT += dt / C.UNLOAD_TIME;
+        const ut = Math.max(0.1, C.UNLOAD_TIME * (st.loadTimeMult || 1));
+        r.loadT += dt / ut;
         if (r.loadT >= 1) {
           state.rawOre += r.cargo;
           state.totalOre += r.cargo;
