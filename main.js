@@ -158,21 +158,14 @@ audio.init();
 applySettings();
 audio.setMusicSector(sim.state.currentSector);
 
-/* Auto-buy (from Research upgrades). Throttled so a rich player doesn't
-   build hundreds in one frame; one purchase per type per ~0.25s. */
+/* Auto-buy was removed for both drills and rovers — every unit is a
+   deliberate placement decision. The function and timer are retained
+   in case auto-buy ever comes back as a flag/event/etc. */
 let autoTimer = 0;
 function autoBuy(frameTime) {
   autoTimer += frameTime;
   if (autoTimer < 0.25) return;
   autoTimer = 0;
-  const st = sim.state.stats;
-  // Auto-buy drills was removed — placing drills on the slot grid is part
-  // of the intended hands-on early game.
-  if (st.autoBuyRovers && sim.roverUnlocked() && sim.canAfford(sim.roverCost())) {
-    // silent so the "first manual rover" achievement flag isn't tripped by auto
-    sim.spend(sim.roverCost());
-    sim.addRover();
-  }
 }
 
 // ---- load saved progress ----
