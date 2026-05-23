@@ -245,7 +245,7 @@ function buildRows(cat) {
       `<div class="upg-head"><span class="upg-name">${def.name}</span><span class="upg-lvl"></span></div>` +
       `<div class="upg-desc">${def.desc}</div>` +
       `<div class="upg-cost"></div>`;
-    row.addEventListener("click", () => openModal(id));
+    row.addEventListener("click", () => quickBuyUpgrade(id));
     els.upgList.appendChild(row);
     rowRefs[id] = { row, lvl: row.querySelector(".upg-lvl"), cost: row.querySelector(".upg-cost") };
   }
@@ -289,6 +289,19 @@ function updateUpgradeRows() {
   }
 }
 
+/* Single-click upgrade — no confirmation modal. Locked / maxed / can't-
+   afford rows do nothing (row visual already signals state). On a
+   successful purchase, fire the same chime + flash the modal used to. */
+function quickBuyUpgrade(id) {
+  if (upgradeMaxed(id) || !upgradeUnlocked(id)) return;
+  if (buyUpgrade(id)) {
+    audio.purchaseChime();
+    fireFlash();
+  }
+}
+
+// kept for backward compat — also exposed via the modal-confirm wiring if
+// anyone re-enables the modal. Single-click is the default behaviour now.
 function openModal(id) {
   if (upgradeMaxed(id) || !upgradeUnlocked(id)) return;
   modalId = id;
