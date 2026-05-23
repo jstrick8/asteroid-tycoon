@@ -27,6 +27,7 @@ export const UPGRADES = {
   refineSpeed:    { cat: "refining", name: "Refining Speed",  base: 90,   max: 30, desc: "+10% smelter refining rate" },
   crateDensity:   { cat: "refining", name: "Crate Density",   base: 100,  max: 30, desc: "+10% $ value per crate" },
   rocketCapacity: { cat: "refining", name: "Rocket Capacity", base: 300,  max: 8,  desc: "Bigger launches: 10 → 14 → 20 → 30 → 50 → 75 → 100 → 150 → 200 crates" },
+  hullExpansion:  { cat: "refining", name: "Hull Expansion",  base: 600,  max: 25, desc: "+15% rocket cargo capacity per level (stacks on top of Rocket Capacity tiers)" },
   rapidLaunch:    { cat: "refining", name: "Rapid Launch",    base: 200,  max: 20, desc: "+10% faster rocket turnaround" },
 
   // ---- RESEARCH (gated by lifetime earnings) ----
@@ -41,6 +42,6 @@ export const UPGRADES = {
 export const CATEGORIES = {
   mining:   ["drillPower", "drillSpeed", "stockpile", "autoSurveyor"],
   fleet:    ["roverSpeed", "roverCapacity", "roverPads"],
-  refining: ["refineSpeed", "crateDensity", "rocketCapacity", "rapidLaunch"],
+  refining: ["refineSpeed", "crateDensity", "rocketCapacity", "hullExpansion", "rapidLaunch"],
   research: ["autoRovers", "smelterEff", "offline", "telescope"],
 };

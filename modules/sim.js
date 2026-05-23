@@ -179,7 +179,13 @@ export function recomputeStats() {
   s.refineRate = C.BASE_REFINE_RATE * Math.pow(1.10, L("refineSpeed")) * sb(b.refine);
   s.refineEfficiency = L("smelterEff") > 0 ? 1.5 : 1.0;
   s.crateValue = C.BASE_CRATE_VALUE * Math.pow(1.10, L("crateDensity")) * sb(b.payout) * coreMult;
-  s.batch = ROCKET_TIERS[Math.min(L("rocketCapacity"), ROCKET_TIERS.length - 1)] * (W("rocketCap") > 0 ? 1.5 : 1);
+  // Rocket Capacity = stepwise tier (10 -> 200 over 8 levels).
+  // Hull Expansion = smooth +15% per level on top, stackable up to 25 levels.
+  // The two combine multiplicatively so the curve has a clear "tier jump"
+  // every Rocket Capacity buy and steady growth from each Hull Expansion.
+  s.batch = ROCKET_TIERS[Math.min(L("rocketCapacity"), ROCKET_TIERS.length - 1)]
+    * Math.pow(1.15, L("hullExpansion"))
+    * (W("rocketCap") > 0 ? 1.5 : 1);
   s.cadence = Math.pow(1.10, L("rapidLaunch"));
 
   s.incomeMult = coreMult;                    // applied to contract cash rewards

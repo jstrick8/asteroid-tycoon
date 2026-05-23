@@ -106,14 +106,17 @@ export const ROCKET_AUTO_LAUNCH_TIMEOUT  = 15.0;
 export const BASE_PAD_COST    = 25000;
 export const PAD_COST_GROWTH  = 4.0;
 export const MAX_LAUNCH_PADS  = 4;
-// launchpad layout — primary pad + offsets around the smelter (homeBody-local).
-// first pad is the original LAUNCH_PAD position; additional pads slide around it.
-export const LAUNCH_PAD       = { x: 3.3, y: 7.0, z: -0.6 };
+// launchpad layout — 4 pads at cardinal compass points around the upper
+// belt of the asteroid. Each rocket has its own quadrant so they don't
+// occlude each other or get hidden behind the smelter. y is moderate
+// (above equator but below the smelter dome) so all 4 are visible from
+// any single camera angle.
+export const LAUNCH_PAD       = { x: 5.5, y: 4.5, z: 0 };
 export const LAUNCH_PAD_OFFSETS = [
-  { x: 3.3, y: 7.0, z: -0.6 },   // pad 1
-  { x: -3.3, y: 7.0, z: -0.6 },  // pad 2
-  { x: 3.3, y: 7.0, z: 2.0 },    // pad 3
-  { x: -3.3, y: 7.0, z: 2.0 },   // pad 4
+  { x: 5.5,  y: 4.5, z: 0    },  // pad 1 — east
+  { x: 0,    y: 4.5, z: 5.5  },  // pad 2 — south
+  { x: -5.5, y: 4.5, z: 0    },  // pad 3 — west
+  { x: 0,    y: 4.5, z: -5.5 },  // pad 4 — north
 ];
 export const REFINED_PAD = { x: -3.1, y: 7.0, z: 1.0 };
 
