@@ -201,6 +201,10 @@ export function init(canvas) {
 
   asteroid = createAsteroid(C.ASTEROID_RADIUS);
   homeBody.add(asteroid);
+  // resolve each drill slot's actual surface point now that the lumpy
+  // asteroid geometry exists. Without this drills end up buried inside
+  // the asteroid bumps (asteroid is r=6.5..9.5, slots default to 7.6).
+  computeSlotSurfacePositions();
   smelter = createSmelter();
   homeBody.add(smelter);
 
@@ -322,18 +326,53 @@ export function init(canvas) {
   return { renderer, scene, camera, controls };
 }
 
+/* Per-slot surface positions, computed once after the asteroid is built by
+   raycasting from outside the asteroid back through each slot direction.
+   The asteroid has lumpy noise on its surface (radius 6.5-9.5), so a
+   fixed radius would leave drills buried inside bumps. Computing real hit
+   points keeps every drill flush with the actual surface. */
+const _slotSurface = []; // { x, y, z, nx, ny, nz }
+function computeSlotSurfacePositions() {
+  _slotSurface.length = 0;
+  if (!asteroid) return;
+  const slots = C.DRILL_SLOTS;
+  const ro = new THREE.Vector3(), rd = new THREE.Vector3();
+  const rc = new THREE.Raycaster();
+  // asteroid lives in homeBody-local space; since we raycast against the
+  // asteroid mesh directly, we get the local-space hit (homeBody not
+  // transformed during init — its matrix is still identity).
+  for (let i = 0; i < slots.length; i++) {
+    const s = slots[i];
+    rd.set(s.x, s.y, s.z).normalize();
+    ro.copy(rd).multiplyScalar(20); // start well outside
+    rd.negate();                     // point back toward center
+    rc.set(ro, rd);
+    const hits = rc.intersectObject(asteroid, false);
+    if (hits.length) {
+      const p = hits[0].point;
+      // bump 0.04 units outward so the drill base doesn't z-fight with the surface
+      _slotSurface.push({
+        x: p.x + s.x * 0.04, y: p.y + s.y * 0.04, z: p.z + s.z * 0.04,
+        nx: s.x, ny: s.y, nz: s.z,
+      });
+    } else {
+      const r = C.DRILL_SLOT_SURFACE_R;
+      _slotSurface.push({ x: s.x * r, y: s.y * r, z: s.z * r, nx: s.x, ny: s.y, nz: s.z });
+    }
+  }
+}
+
 /* Drills snap to dedicated slots on the lower hemisphere. The slot index
    is the current drill count so each new drill fills the next free slot
    in the spiral. If the player builds more drills than slots exist (rare),
    we fall back to the old random-triangle picker. */
 export function pickPlacement() {
   const i = state.drills.length;
-  if (i < C.DRILL_SLOTS.length) {
-    const s = C.DRILL_SLOTS[i];
-    const r = C.DRILL_SLOT_SURFACE_R;
+  if (i < _slotSurface.length) {
+    const s = _slotSurface[i];
     return {
-      pos: { x: s.x * r, y: s.y * r, z: s.z * r },
-      nrm: { x: s.x, y: s.y, z: s.z },
+      pos: { x: s.x, y: s.y, z: s.z },
+      nrm: { x: s.nx, y: s.ny, z: s.nz },
     };
   }
   return pickSurfacePoint(asteroid);
@@ -560,15 +599,17 @@ function basisQuat(up, fwd, outQuat) {
    visible. The slot's outward normal is the unit vector from origin. */
 function buildMiningPadMatrices() {
   if (!miningPads) return;
-  const slots = C.DRILL_SLOTS;
-  const n = slots.length;
+  // use the real per-slot surface positions (computed via raycast against
+  // the lumpy asteroid) so each pad sits flush with the terrain instead of
+  // floating in space or getting buried in a bump.
+  const surf = _slotSurface;
+  const n = surf.length;
   miningPads.count = n;
   for (let i = 0; i < n; i++) {
-    const s = slots[i];
-    const r = C.DRILL_SLOT_SURFACE_R + 0.02; // sit a hair above the surface
-    _pos.set(s.x * r, s.y * r, s.z * r);
-    const norm = _v.set(s.x, s.y, s.z); // unit length
-    _q.setFromUnitVectors(UP, norm);    // disc face perpendicular to surface
+    const s = surf[i];
+    _pos.set(s.x, s.y, s.z);
+    const norm = _v.set(s.nx, s.ny, s.nz);
+    _q.setFromUnitVectors(UP, norm);
     _scaleA.set(1, 1, 1);
     _m.compose(_pos, _q, _scaleA);
     miningPads.setMatrixAt(i, _m);
