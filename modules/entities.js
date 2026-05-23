@@ -214,6 +214,40 @@ export function createSmokeInstancedMesh(capacity = C.SMOKE_POOL) {
   return mesh;
 }
 
+// ---------- CHUNK (clickable manual-mining ore — hovering, glowy) ----------
+export function createChunkInstancedMesh(capacity = C.CHUNK_POOL) {
+  // bigger + glowier than stockpile ore so the player can find them in space
+  const geo = new THREE.OctahedronGeometry(0.38, 0);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xfff0a0,
+    emissive: 0xffae3b,
+    emissiveIntensity: 1.6,
+    metalness: 0.2,
+    roughness: 0.35,
+    flatShading: true,
+  });
+  const mesh = instanced(geo, mat, capacity, { color: true });
+  mesh.name = "chunk-pool";
+  return mesh;
+}
+
+// ---------- DRILL HALO (upgrade-tier visual aura) ----------
+export function createDrillHaloInstancedMesh(capacity = C.DRILL_CAP) {
+  // a soft additive sphere that bloom can lift to a real glow
+  const geo = new THREE.SphereGeometry(1.05, 14, 10);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.35,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const mesh = instanced(geo, mat, capacity);
+  mesh.name = "drill-halos";
+  mesh.count = 0;
+  return mesh;
+}
+
 // ---------- REFINED CRATES (gold, instanced) ----------
 export function createCrateInstancedMesh(capacity = C.CRATE_POOL) {
   const geo = new THREE.BoxGeometry(0.42, 0.42, 0.42);

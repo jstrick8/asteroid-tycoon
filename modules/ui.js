@@ -7,7 +7,8 @@
 import {
   state, drillCost, roverCost, batchCrates, contractTarget,
   upgradeLevel, upgradeCost, upgradeUnlocked, upgradeMaxed, canBuyUpgrade,
-  buyUpgrade, researchUnlocked,
+  buyUpgrade, researchUnlocked, roverUnlocked,
+  padCost, canBuyPad,
   acceptContract, manualRefreshContracts,
   warpUnlocked, computeWarpCores, warpUpgradeCost, warpUpgradeMaxed,
   canBuyWarpUpgrade, buyWarpUpgrade, warpLevel, achievementMult,
@@ -19,6 +20,7 @@ import { getSector } from "./sectors.js";
 import { ACHIEVEMENTS, fmtBig } from "./achievements.js";
 import { settings, save as saveSettings, reset as resetSettings, QUALITY } from "./settings.js";
 import * as audio from "./audio.js";
+import * as radio from "./radio.js";
 
 const els = {};
 let activeTab = "mining";
@@ -206,9 +208,19 @@ export function init(callbacks = {}) {
   const roverBtn = makeButton("build-rover-btn", "BUILD ROVER");
   roverBtn.addEventListener("click", () => cb.onBuildRover && cb.onBuildRover());
   els.buyBar.appendChild(roverBtn);
+  const padBtn = makeButton("build-pad-btn", "BUILD LAUNCHPAD");
+  padBtn.addEventListener("click", () => cb.onBuildPad && cb.onBuildPad());
+  els.buyBar.appendChild(padBtn);
   els.drillBtn = drillBtn; els.drillCost = drillBtn.querySelector(".build-cost");
   els.roverBtn = roverBtn; els.roverCost = roverBtn.querySelector(".build-cost");
   els.roverBadge = roverBtn.querySelector(".build-badge");
+  els.padBtn = padBtn; els.padCost = padBtn.querySelector(".build-cost");
+  els.padBadge = padBtn.querySelector(".build-badge");
+
+  // radio chatter banner element (subtle bottom-left flavor transmissions)
+  els.radio = document.getElementById("radio-chatter");
+  els.radioText = document.getElementById("radio-chatter-text");
+  if (els.radio && els.radioText) radio.init(els.radio, els.radioText);
 
   displayedCash = state.cash;
   buildRows(activeTab);
@@ -307,6 +319,9 @@ export function update() {
   let dt = now - lastClock; lastClock = now;
   if (dt > 0.1) dt = 0.1;
 
+  // tick the radio-chatter typewriter every UI frame
+  radio.tick(dt);
+
   // eased cash — faster for big jumps (rocket payouts)
   const delta = Math.abs(state.cash - displayedCash);
   const rate = 12 + Math.min(delta / 60, 40);
@@ -317,12 +332,38 @@ export function update() {
 
   const dc = drillCost();
   if (dc !== lastDrillCost) { lastDrillCost = dc; els.drillCost.textContent = fmt(dc); }
+  const rUnlocked = roverUnlocked();
   const rc = roverCost();
-  if (rc !== lastRoverCost) { lastRoverCost = rc; els.roverCost.textContent = fmt(rc); }
+  // when rovers are locked, show the unlock threshold instead of price
+  const roverLabel = rUnlocked ? fmt(rc) : `LOCKED · ${fmt(C.ROVER_UNLOCK_LIFETIME)} lifetime`;
+  if (roverLabel !== lastRoverCost) { lastRoverCost = roverLabel; els.roverCost.textContent = roverLabel; }
   const da = state.cash >= dc;
   if (da !== lastDrillAfford) { lastDrillAfford = da; els.drillBtn.classList.toggle("disabled", !da); }
-  const ra = state.cash >= rc;
-  if (ra !== lastRoverAfford) { lastRoverAfford = ra; els.roverBtn.classList.toggle("disabled", !ra); }
+  const ra = rUnlocked && state.cash >= rc;
+  if (ra !== lastRoverAfford) {
+    lastRoverAfford = ra;
+    els.roverBtn.classList.toggle("disabled", !ra);
+    els.roverBtn.classList.toggle("locked", !rUnlocked);
+  }
+
+  // launchpads — show "MAXED" when capped, "LOCKED" until lifetime > some bar,
+  // otherwise the next pad's cost. Hidden entirely until the player has
+  // bought at least one drill (avoids cluttering the early game).
+  if (els.padBtn) {
+    const padUnlocked = state.lifetimeEarnings >= C.BASE_PAD_COST * 0.4 && state.drills.length >= 3;
+    els.padBtn.style.display = padUnlocked ? "" : "none";
+    if (padUnlocked) {
+      const pc = padCost();
+      const padLabel = !isFinite(pc) ? "MAXED" : fmt(pc);
+      if (els.padCost.textContent !== padLabel) els.padCost.textContent = padLabel;
+      els.padBtn.classList.toggle("disabled", !canBuyPad());
+      // pad count badge so the player can see how many they own
+      if (els.padBadge) {
+        els.padBadge.hidden = false;
+        els.padBadge.textContent = `${state.pads}/${C.MAX_LAUNCH_PADS}`;
+      }
+    }
+  }
 
   const bgText = state.bgRovers > 0 ? `+${state.bgRovers} FLEET` : "";
   if (bgText !== lastBgText) {

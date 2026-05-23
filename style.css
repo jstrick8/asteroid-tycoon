@@ -177,7 +177,7 @@ html, body {
   background: rgba(2,4,10,0.55); backdrop-filter: blur(2px);
 }
 #contracts-modal[hidden] { display: none; }
-.modal-box.wide { width: 560px; max-height: 76vh; }
+.modal-box.wide { width: 640px; max-height: 80vh; }
 .cm-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 #cm-title { font-family: var(--font-display); font-size: 16px; letter-spacing: 2px; color: var(--amber); text-shadow: var(--glow-sm); }
 #cm-currency { font-family: var(--font-display); font-size: 12px; color: var(--cyan); }
@@ -420,7 +420,8 @@ html, body {
 /* ---- settings modal ---- */
 #settings-modal { position: fixed; inset: 0; z-index: 64; display: flex; align-items: center; justify-content: center; background: rgba(2,4,10,0.55); backdrop-filter: blur(2px); }
 #settings-modal[hidden] { display: none; }
-#settings-body { display: flex; flex-direction: column; gap: 12px; min-width: 360px; }
+#settings-body { display: flex; flex-direction: column; gap: 14px; min-width: 480px; }
+#settings-modal .modal-box { width: 540px; max-width: calc(100vw - 60px); padding: 28px 32px; }
 .set-row { display: flex; flex-direction: column; gap: 5px; }
 .set-label { font-family: var(--font-display); font-size: 11px; letter-spacing: 1px; color: var(--text-dim); display: flex; justify-content: space-between; }
 .set-label .val { color: var(--amber); }
@@ -872,4 +873,56 @@ html, body {
     transparent 55%,
     rgba(0, 0, 0, 0.55) 100%
   );
+}
+
+/* ============ ASTEROID INTERACTION CURSOR ============ */
+/* crosshair on the scene canvas to telegraph that clicks do something */
+#scene { cursor: crosshair; }
+
+/* ============ RADIO CHATTER (bottom-left flavor transmissions) ============ */
+#radio-chatter {
+  position: fixed;
+  left: 18px;
+  bottom: 16px;
+  z-index: 22;
+  max-width: 460px;
+  font-family: var(--font-display, "JetBrains Mono", monospace);
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #b8e6ff;
+  text-shadow: 0 0 4px rgba(70, 200, 255, 0.5);
+  background: linear-gradient(90deg, rgba(8, 18, 32, 0.78), rgba(8, 18, 32, 0.25));
+  border-left: 2px solid #46c8ff;
+  padding: 8px 12px 8px 14px;
+  border-radius: 0 4px 4px 0;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.25s, transform 0.25s;
+}
+#radio-chatter.show { opacity: 0.92; transform: translateX(0); }
+#radio-chatter .radio-blink {
+  display: inline-block;
+  margin-left: 2px;
+  color: #46c8ff;
+  animation: radioBlink 1s steps(2) infinite;
+}
+@keyframes radioBlink { 50% { opacity: 0; } }
+
+/* ============ BUILD LAUNCHPAD button ============ */
+#build-pad-btn .build-title { color: #c5fff0; }
+#build-pad-btn .build-badge {
+  background: rgba(70, 200, 255, 0.18);
+  color: #46c8ff;
+  border-color: rgba(70, 200, 255, 0.4);
+}
+
+/* ============ LOCKED rover button (pre-50k lifetime) ============ */
+.build-btn.locked {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}
+.build-btn.locked .build-cost {
+  color: #8893a8;
+  font-size: 10px;
 }

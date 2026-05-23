@@ -33,6 +33,10 @@ function deployDrill(silent = false) {
 
 function deployRover(silent = false) {
   if (!silent) {
+    // gate: rovers unlock only after a lifetime-earnings threshold so the
+    // early game is hand-built drills + manual mining (intentionally slow).
+    // the button itself shows "LOCKED · $50,000 lifetime" so no extra prompt.
+    if (!sim.roverUnlocked()) return false;
     const cost = sim.roverCost();
     if (!sim.canAfford(cost)) return false;
     sim.spend(cost);
@@ -40,6 +44,13 @@ function deployRover(silent = false) {
   }
   sim.addRover(); // render reflects rovers via instancing
   return true;
+}
+
+/* Buy a new launchpad — a capital expenditure not tied to research. Each pad
+   gets its own rocket and roughly doubles throughput. */
+function buyLaunchPad() {
+  if (!sim.canBuyPad()) return false;
+  return sim.buyPad();
 }
 
 /* Resolve a choice event. Decline (incl. pirates "fight") is handled in sim;
@@ -130,6 +141,7 @@ ui.setSplashProgress(0.6);
 ui.init({
   onBuildDrill: () => deployDrill(false),
   onBuildRover: () => deployRover(false),
+  onBuildPad: () => buyLaunchPad(),
   onChoice: resolveChoice,
   onWarp: doWarp,
   onExport: () => save.exportSave(),
@@ -155,7 +167,11 @@ function autoBuy(frameTime) {
   autoTimer = 0;
   const st = sim.state.stats;
   if (st.autoBuyDrills && sim.canAfford(sim.drillCost())) deployDrill(false);
-  if (st.autoBuyRovers && sim.canAfford(sim.roverCost())) deployRover(false);
+  if (st.autoBuyRovers && sim.roverUnlocked() && sim.canAfford(sim.roverCost())) {
+    // silent so the "first manual rover" achievement flag isn't tripped by auto
+    sim.spend(sim.roverCost());
+    sim.addRover();
+  }
 }
 
 // ---- load saved progress ----
@@ -227,6 +243,31 @@ window.addEventListener("keydown", (e) => {
   } else if (e.key === "Escape") {
     ui.closeAllModals();
   }
+});
+
+/* ============================================================
+   Click-to-mine: tap the asteroid to chip ore, tap chunks to collect.
+   Distinguishes a tap from a drag (OrbitControls handles drag) by tracking
+   pointer travel between down and up events. Canvas-only so HTML UI clicks
+   pass through normally.
+   ============================================================ */
+let clickDown = { x: 0, y: 0, t: 0 };
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  clickDown = { x: e.clientX, y: e.clientY, t: performance.now() };
+});
+canvas.addEventListener("pointerup", (e) => {
+  if (e.button !== 0) return;
+  const dx = e.clientX - clickDown.x;
+  const dy = e.clientY - clickDown.y;
+  const dt = performance.now() - clickDown.t;
+  if (Math.hypot(dx, dy) > 8 || dt > 400) return; // it was a drag, ignore
+  // chunk first (small target, satisfying to collect)
+  const cid = render.pickChunkAt(e.clientX, e.clientY);
+  if (cid != null) { sim.collectChunk(cid); return; }
+  // otherwise hit the asteroid surface
+  const hit = render.pickAsteroidClickPoint(e.clientX, e.clientY);
+  if (hit) sim.clickAsteroid(hit.pos, hit.nrm);
 });
 
 // ---- hover tooltips (raycast, throttled) ----

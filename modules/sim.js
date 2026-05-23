@@ -16,6 +16,16 @@ import { ACHIEVEMENTS } from "./achievements.js";
 export const FIXED_HZ = 60;
 export const FIXED_DT = 1 / FIXED_HZ;
 
+/* Make a fresh rocket-state object. One per launchpad. */
+function makeRocket(padIndex = 0) {
+  return {
+    padIndex,
+    phase: "IDLE", timer: 0, idleTimer: 0,
+    loadT: 0, ascent: 0, ascentPrev: 0,
+    cargo: 0, payout: 0, fade: 1,
+  };
+}
+
 export const state = {
   tick: 0,
   time: 0,
@@ -25,6 +35,13 @@ export const state = {
   totalLaunches: 0,      // cumulative rockets launched (for contracts)
   lifetimeEarnings: 0,   // total $ ever earned, ALL runs (gates research + warp)
   runEarnings: 0,        // $ earned since the last warp (drives core yield)
+
+  // manual mining (Phase 1 click loop)
+  clicksMined: 0,                  // lifetime asteroid clicks
+  chunksCollected: 0,              // lifetime chunks tapped
+  clickCooldown: 0,                // sim seconds until next valid asteroid click
+  chunks: [],                      // [{ id, x, y, z, vx, vy, vz, life, value }]
+  _chunkId: 0,
 
   researchPoints: 0,     // earned from contracts (silver+)
   reputation: 0,         // earned from gold-tier contracts
@@ -49,6 +66,8 @@ export const state = {
     eventsTriggered: 0, eventsAccepted: 0, eventsDeclined: 0,
     riskyAccepted: 0, meteorsSurvived: 0,
     timePlayedTotal: 0,
+    alienTechHits: 0,
+    clicksMinedTotal: 0,
   },
   achCheck: 0,        // throttle accumulator
 
@@ -60,6 +79,13 @@ export const state = {
   upgrades: {},          // { upgradeId: level }
   stats: {},             // derived from upgrades (see recomputeStats)
 
+  // launchpads (1 by default, up to MAX_LAUNCH_PADS)
+  pads: 1,
+  rockets: [makeRocket(0)],
+
+  // legacy single-rocket alias — kept so older saves can hydrate gracefully.
+  // updated each frame to mirror rockets[0] for any read sites that still touch
+  // state.rocket directly (only render does, and it's been migrated below).
   rocket: { phase: "IDLE", timer: 0, loadT: 0, ascent: 0, ascentPrev: 0, cargo: 0, payout: 0, fade: 1 },
 
   // random events
@@ -105,16 +131,18 @@ export function canBuyUpgrade(id) {
 }
 export function buyUpgrade(id) {
   if (!canBuyUpgrade(id)) return false;
-  state.cash -= upgradeCost(id);
+  spend(upgradeCost(id));
   state.upgrades[id] = upgradeLevel(id) + 1;
   recomputeStats();
   return true;
 }
 export function researchUnlocked() { return state.lifetimeEarnings >= C.RESEARCH_UNLOCK; }
+export function roverUnlocked() { return state.lifetimeEarnings >= C.ROVER_UNLOCK_LIFETIME; }
 
-const STOCKPILE_TIERS = [10, 20, 40, 80];
-const CAPACITY_TIERS = [5, 8, 12, 20, 30];
-const ROCKET_TIERS = [10, 20, 50, 100, 200];
+// Stockpile / capacity / rocket tiers — the index is the upgrade level
+const STOCKPILE_TIERS = [10, 20, 40, 80, 160, 320];
+const CAPACITY_TIERS  = [1, 3, 5, 8, 12, 20, 30];     // starts low; capacity upgrade tier expanded
+const ROCKET_TIERS    = [10, 14, 20, 30, 50, 75, 100, 150, 200];
 
 export function warpLevel(id) { return state.warpUpgrades[id] || 0; }
 
@@ -136,20 +164,23 @@ export function recomputeStats() {
     * Math.pow(1.03, state.prophecyCores)
     * (1 + 0.01 * Object.keys(state.achievements).length);
 
-  s.drillOrePerCycle = Math.pow(1.5, L("drillPower")) * (L("autoSurveyor") > 0 ? 1.1 : 1)
+  // ---- mining (+10% per level instead of +50% → many more meaningful levels) ----
+  s.drillOrePerCycle = Math.pow(1.10, L("drillPower")) * (L("autoSurveyor") > 0 ? 1.1 : 1)
     * sb(b.drillPower) * Math.pow(1.5, W("permDrillPower"));
-  s.drillCycleTime = Math.max(0.5, C.PROD_INTERVAL * Math.pow(0.9, L("drillSpeed")) / sb(b.drillSpeed));
+  s.drillCycleTime = Math.max(0.5, C.PROD_INTERVAL * Math.pow(0.95, L("drillSpeed")) / sb(b.drillSpeed));
   s.stockpileMax = STOCKPILE_TIERS[Math.min(L("stockpile"), STOCKPILE_TIERS.length - 1)];
 
-  s.roverSpeed = C.ROVER_SPEED * Math.pow(1.12, L("roverSpeed")) * sb(b.roverSpeed) * Math.pow(1.3, W("permRoverSpeed"));
+  // ---- fleet ----
+  s.roverSpeed = C.ROVER_SPEED * Math.pow(1.05, L("roverSpeed")) * sb(b.roverSpeed) * Math.pow(1.3, W("permRoverSpeed"));
   s.roverCapacity = CAPACITY_TIERS[Math.min(L("roverCapacity"), CAPACITY_TIERS.length - 1)];
   s.maxVisibleRovers = C.ROVER_VISIBLE_CAP + L("roverPads") * 50;
 
-  s.refineRate = C.BASE_REFINE_RATE * Math.pow(1.3, L("refineSpeed")) * sb(b.refine);
+  // ---- refining (+10% per level) ----
+  s.refineRate = C.BASE_REFINE_RATE * Math.pow(1.10, L("refineSpeed")) * sb(b.refine);
   s.refineEfficiency = L("smelterEff") > 0 ? 1.5 : 1.0;
-  s.crateValue = C.BASE_CRATE_VALUE * Math.pow(1.5, L("crateDensity")) * sb(b.payout) * coreMult;
+  s.crateValue = C.BASE_CRATE_VALUE * Math.pow(1.10, L("crateDensity")) * sb(b.payout) * coreMult;
   s.batch = ROCKET_TIERS[Math.min(L("rocketCapacity"), ROCKET_TIERS.length - 1)] * (W("rocketCap") > 0 ? 1.5 : 1);
-  s.cadence = Math.pow(1.15, L("rapidLaunch"));
+  s.cadence = Math.pow(1.10, L("rapidLaunch"));
 
   s.incomeMult = coreMult;                    // applied to contract cash rewards
   s.rpMult = W("doubleRP") > 0 ? 2 : 1;
@@ -170,9 +201,26 @@ export function roverCount() { return state.rovers.length + state.bgRovers; }
 export function roverCost() {
   return Math.ceil(C.BASE_ROVER_COST * Math.pow(C.ROVER_COST_GROWTH, roverCount()));
 }
+export function padCost() {
+  if (state.pads >= C.MAX_LAUNCH_PADS) return Infinity;
+  return Math.ceil(C.BASE_PAD_COST * Math.pow(C.PAD_COST_GROWTH, state.pads - 1));
+}
+export function canBuyPad() {
+  return state.pads < C.MAX_LAUNCH_PADS && state.cash >= padCost();
+}
+export function buyPad() {
+  if (!canBuyPad()) return false;
+  spend(padCost());
+  state.pads += 1;
+  state.rockets.push(makeRocket(state.pads - 1));
+  state.events.push({ type: "padBuilt", padIndex: state.pads - 1 });
+  return true;
+}
 export function canAfford(amount) { return state.cash >= amount; }
 export function spend(amount) {
   if (!Number.isFinite(amount) || amount < 0) return;
+  // any visible state.cash mutation goes through here. defensive clamp at 0
+  // (can never go negative even if a caller miscomputes a cost).
   state.cash = Math.max(0, state.cash - amount);
 }
 
@@ -199,6 +247,80 @@ export function addEarnings(n) {
 export function batchCrates() { return Math.max(1, Math.round(state.stats.batch)); }
 export function crateValue() { return state.stats.crateValue; }
 
+// ============================================================
+//  MANUAL MINING (click loop before drills)
+// ============================================================
+/* Player click on the asteroid surface. Spawns a hovering ore chunk with
+   outward velocity that the player can then click to collect $. Position is
+   local to the asteroid (so it stays "on" the spinning asteroid in render). */
+export function clickAsteroid(pos, nrm) {
+  if (state.clickCooldown > 0) return false;
+  state.clickCooldown = C.CLICK_COOLDOWN;
+  state.clicksMined += 1;
+  state.stat.clicksMinedTotal += 1;
+  // Sometimes a click pops a tiny instant payout (free $1 to kickstart Phase 0)
+  // and always spawns one collectable chunk.
+  const id = ++state._chunkId;
+  const v = C.CLICK_CHUNK_VEL * (0.7 + Math.random() * 0.6);
+  state.chunks.push({
+    id,
+    x: pos.x, y: pos.y, z: pos.z,
+    vx: nrm.x * v + (Math.random() - 0.5) * 1.6,
+    vy: nrm.y * v + (Math.random() - 0.5) * 1.6,
+    vz: nrm.z * v + (Math.random() - 0.5) * 1.6,
+    life: C.CLICK_CHUNK_LIFE,
+    value: C.CLICK_ORE_VALUE,
+    nx: nrm.x, ny: nrm.y, nz: nrm.z,
+  });
+  state.events.push({ type: "asteroidHit", x: pos.x, y: pos.y, z: pos.z, nx: nrm.x, ny: nrm.y, nz: nrm.z });
+  return true;
+}
+
+/* Player clicks a chunk in the world: collect, pay out, despawn. */
+export function collectChunk(id) {
+  for (let i = 0; i < state.chunks.length; i++) {
+    if (state.chunks[i].id === id) {
+      const c = state.chunks[i];
+      state.chunks.splice(i, 1);
+      addCash(c.value);
+      addEarnings(c.value);
+      state.chunksCollected += 1;
+      state.events.push({ type: "chunkCollected", x: c.x, y: c.y, z: c.z, value: c.value });
+      return true;
+    }
+  }
+  return false;
+}
+
+function stepChunks(dt) {
+  if (state.clickCooldown > 0) state.clickCooldown = Math.max(0, state.clickCooldown - dt);
+  const arr = state.chunks;
+  const R = C.ASTEROID_RADIUS;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const c = arr[i];
+    c.life -= dt;
+    if (c.life <= 0) { arr.splice(i, 1); continue; }
+    // tug back toward asteroid center (spherical "gravity")
+    const r = Math.hypot(c.x, c.y, c.z) || 1;
+    const gx = -c.x / r * 1.5, gy = -c.y / r * 1.5, gz = -c.z / r * 1.5;
+    c.vx += gx * dt; c.vy += gy * dt; c.vz += gz * dt;
+    c.vx *= 0.985; c.vy *= 0.985; c.vz *= 0.985; // mild drag → hover-like
+    c.x += c.vx * dt; c.y += c.vy * dt; c.z += c.vz * dt;
+    // soft clamp inside an outer shell so chunks don't fly off-screen
+    const r2 = Math.hypot(c.x, c.y, c.z);
+    if (r2 > R + 3) {
+      const k = (R + 3) / r2;
+      c.x *= k; c.y *= k; c.z *= k;
+      c.vx *= -0.4; c.vy *= -0.4; c.vz *= -0.4;
+    }
+    if (r2 < R + 0.4) {
+      // bobbing prevention — push back out a touch
+      const k = (R + 0.4) / (r2 || 1);
+      c.x *= k; c.y *= k; c.z *= k;
+    }
+  }
+}
+
 // ---- builders ----
 export function addDrill(pos, nrm, deployed = false) {
   const d = {
@@ -211,6 +333,7 @@ export function addDrill(pos, nrm, deployed = false) {
     stockpile: 0,
     inbound: 0,
     disabledUntil: 0,
+    cycles: 0,                // total completed cycles (used for pockmark intensity)
   };
   state.drills.push(d);
   state.stat.drillsBuilt += 1;
@@ -288,6 +411,7 @@ export function step(dt = FIXED_DT) {
   if (state.asteroidSpin > Math.PI * 2) state.asteroidSpin -= Math.PI * 2;
 
   stepEvents(dt); // refresh fx + fire/expire events before production uses them
+  stepChunks(dt);
 
   const st = state.stats;
   const fx = state.fx;
@@ -315,6 +439,19 @@ export function step(dt = FIXED_DT) {
         const mult = i === fx.veinDrill ? fx.veinMult : 1;
         d.stockpile = Math.min(st.stockpileMax, d.stockpile + st.drillOrePerCycle * mult);
         d.cooldown += st.drillCycleTime / fx.drillSpeedMult;
+        d.cycles += 1;
+
+        // alien tech jackpot — 1% chance per cycle. instant huge payout +
+        // log entry + visual burst. scales with current crateValue so it
+        // remains exciting deep into late-game.
+        if (Math.random() < C.ALIEN_TECH_CHANCE) {
+          const payout = Math.max(50, Math.round(crateValue() * C.ALIEN_TECH_REWARD_X));
+          addCash(payout);
+          addEarnings(payout);
+          state.stat.alienTechHits += 1;
+          logEvent("ALIEN TECH RECOVERED", `+$${payout.toLocaleString()}`);
+          state.events.push({ type: "alienTech", x: d.x, y: d.y, z: d.z, nx: d.nx, ny: d.ny, nz: d.nz, payout });
+        }
       } else {
         d.cooldown = 0;
       }
@@ -400,26 +537,45 @@ export function step(dt = FIXED_DT) {
     state.totalRefined += made;
   }
 
-  stepRocket(dt);
+  // ---- rockets: one cycle per pad ----
+  for (let pi = 0; pi < state.rockets.length; pi++) {
+    stepRocket(state.rockets[pi], dt);
+  }
+  // mirror first pad into legacy alias so any old reads still work
+  Object.assign(state.rocket, state.rockets[0]);
+
   stepContracts(dt);
 }
 
-function stepRocket(dt) {
-  const rk = state.rocket;
+/* Per-pad rocket FSM. Each pad pulls from the shared refinedStock pool.
+   Auto-launch logic: launches at 80% batch fill OR every 15s if any crates
+   are queued, preventing buildup overflow when production outpaces capacity. */
+function stepRocket(rk, dt) {
   rk.ascentPrev = rk.ascent;
   const delay = state.fx.launchDelayMult || 1;
-  const cadence = (state.stats.cadence || 1) / delay; // fuel shortage slows everything
+  const cadence = (state.stats.cadence || 1) / delay;
 
   switch (rk.phase) {
     case "IDLE": {
       rk.fade = Math.min(1, rk.fade + dt * 2.5);
+      rk.idleTimer += dt;
       const batch = batchCrates();
-      if (state.refinedStock >= batch) {
-        state.refinedStock -= batch;
-        rk.cargo = batch;
-        rk.payout = Math.round(batch * crateValue());
-        rk.loadT = 0;
-        rk.phase = "LOADING";
+      const triggerFull = batch;
+      const triggerEarly = Math.max(1, Math.floor(batch * C.ROCKET_AUTO_LAUNCH_FRACTION));
+      const wantsLaunch =
+        state.refinedStock >= triggerFull ||
+        (state.refinedStock >= triggerEarly && rk.idleTimer >= C.ROCKET_AUTO_LAUNCH_TIMEOUT) ||
+        (state.refinedStock >= 1 && rk.idleTimer >= C.ROCKET_AUTO_LAUNCH_TIMEOUT * 2);
+      if (wantsLaunch) {
+        const take = Math.min(batch, Math.floor(state.refinedStock));
+        if (take >= 1) {
+          state.refinedStock -= take;
+          rk.cargo = take;
+          rk.payout = Math.round(take * crateValue());
+          rk.loadT = 0;
+          rk.idleTimer = 0;
+          rk.phase = "LOADING";
+        }
       }
       break;
     }
@@ -443,7 +599,7 @@ function stepRocket(dt) {
         for (const c of state.contracts.active) {
           if (c.type === "combo" && rc >= c.comboRovers) c.progress += 1;
         }
-        state.events.push({ type: "launch", payout: pay, x: C.LAUNCH_PAD.x, y: C.LAUNCH_PAD.y, z: C.LAUNCH_PAD.z });
+        state.events.push({ type: "launch", payout: pay, padIndex: rk.padIndex });
       }
       break;
     }
@@ -454,7 +610,7 @@ function stepRocket(dt) {
     }
     case "COOLDOWN": {
       rk.timer -= dt;
-      if (rk.timer <= 0) { rk.phase = "IDLE"; rk.fade = 0; rk.ascent = 0; rk.ascentPrev = 0; }
+      if (rk.timer <= 0) { rk.phase = "IDLE"; rk.fade = 0; rk.ascent = 0; rk.ascentPrev = 0; rk.idleTimer = 0; }
       break;
     }
   }
@@ -727,6 +883,9 @@ export function warpReset(targetSector) {
   state.rawOre = 0; state.refinedStock = 0;
   state.totalOre = 0; state.totalRefined = 0; state.totalLaunches = 0;
   state.runEarnings = 0;
+  state.chunks.length = 0; state.clickCooldown = 0;
+  state.pads = 1;
+  state.rockets = [makeRocket(0)];
 
   // wipe run upgrades (keep research only if Knowledge Retention owned)
   const wipe = [...CATEGORIES.mining, ...CATEGORIES.fleet, ...CATEGORIES.refining];
@@ -847,11 +1006,14 @@ export function serialize() {
     totalLaunches: state.totalLaunches,
     lifetimeEarnings: safeNum(state.lifetimeEarnings),
     runEarnings: safeNum(state.runEarnings),
+    clicksMined: state.clicksMined,
+    chunksCollected: state.chunksCollected,
     researchPoints: state.researchPoints,
     reputation: state.reputation,
     totalContractsCompleted: state.totalContractsCompleted,
     rawOre: state.rawOre,
     refinedStock: state.refinedStock,
+    pads: state.pads,
     upgrades: state.upgrades,
     contracts: state.contracts,
     eventLog: state.eventLog,
@@ -887,11 +1049,16 @@ export function applySave(data) {
   state.totalLaunches = num(data.totalLaunches, 0);
   state.lifetimeEarnings = lifetime;
   state.runEarnings = num(data.runEarnings, 0);
+  state.clicksMined = num(data.clicksMined, 0);
+  state.chunksCollected = num(data.chunksCollected, 0);
   state.researchPoints = num(data.researchPoints, 0);
   state.reputation = num(data.reputation, 0);
   state.totalContractsCompleted = num(data.totalContractsCompleted, 0);
   state.rawOre = num(data.rawOre, 0);
   state.refinedStock = num(data.refinedStock, 0);
+  state.pads = Math.max(1, Math.min(C.MAX_LAUNCH_PADS, num(data.pads, 1)));
+  state.rockets = [];
+  for (let i = 0; i < state.pads; i++) state.rockets.push(makeRocket(i));
   if (data.upgrades) state.upgrades = data.upgrades;
   if (data.contracts && data.contracts.initialized) state.contracts = data.contracts;
   if (Array.isArray(data.eventLog)) state.eventLog = data.eventLog;
@@ -910,10 +1077,9 @@ export function applySave(data) {
 
   const drillCount = data.drillCount ?? 0;
   const roverCount = data.roverCount ?? 0;
-  if (roverCount === 0) {
-    const floor = C.BASE_ROVER_COST + (drillCount === 0 ? C.BASE_DRILL_COST : 0);
-    if (state.cash < floor) state.cash = floor;
-  }
+  // (no auto-floor on cash — the 5M-feels-like-reset issue was actually
+  // GROWTH=5 making single upgrades cost most of your bank, not a save bug.
+  // every spend goes through spend() which clamps at 0 cleanly.)
   return { drillCount, roverCount };
 }
 

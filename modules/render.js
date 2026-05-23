@@ -17,8 +17,12 @@ import {
   createDrillMeshes, createRoverMeshes, createOreInstancedMesh,
   createDustInstancedMesh, createSmokeInstancedMesh, createCrateInstancedMesh,
   createLaunchPad, createRocket, createResearchLab, createWarpGate, WHEEL_OFFSETS,
+  createChunkInstancedMesh, createDrillHaloInstancedMesh,
 } from "./entities.js";
-import { state, prev, upgradeLevel, warpUnlocked } from "./sim.js";
+import {
+  state, prev, upgradeLevel, warpUnlocked,
+  clickAsteroid as simClickAsteroid, collectChunk as simCollectChunk,
+} from "./sim.js";
 import { getSector } from "./sectors.js";
 import * as C from "./config.js";
 import * as audio from "./audio.js";
@@ -26,8 +30,11 @@ import * as ui from "./ui.js";
 
 let renderer, scene, camera, controls;
 let homeBody, asteroid, starfield, smelter;
-let drillBody, drillBit, drillLight, roverBody, roverWheel, roverHeadlight, oreMesh, dustMesh;
-let crateMesh, smokeMesh, launchPad, rocket, researchLab, sun, warpGate;
+let drillBody, drillBit, drillLight, drillHalo;
+let roverBody, roverWheel, roverHeadlight, oreMesh, dustMesh;
+let crateMesh, smokeMesh, researchLab, sun, warpGate;
+let chunkMesh;
+const launchPads = [];   // [{ pad: Mesh, rocket: Group, pos: Vec3, normal: Vec3, quat: Quat }]
 let warpStreak = 0;
 let starBaseSize = 2.2;
 let stormTime = 0;     // offline-collect rocket-storm celebration
@@ -47,14 +54,24 @@ const FLARE_BG = new THREE.Color(0x140a06);
 const BASE_SUN = new THREE.Color(0xfff2dd);
 const FLARE_SUN = new THREE.Color(0xff8a3a);
 
-// rocket pad frames (homeBody-local)
-const PAD_POS = new THREE.Vector3();
-const PAD_NORMAL = new THREE.Vector3();
-const PAD_QUAT = new THREE.Quaternion();
+// crate stack near the smelter — refined output shared across all pads
 const RPAD_POS = new THREE.Vector3();
 const RPAD_QUAT = new THREE.Quaternion();
 const CRATE_STACK = [];
 const _ndc = new THREE.Vector3();
+
+// drill tier visuals (changes the SHARED drill body/bit material colors based
+// on the player's drillPower upgrade level — every drill on the field reflects
+// the current tier without per-instance material churn).
+const DRILL_TIERS = [
+  { upTo: 4,  body: 0x6a6e78, bodyEmissive: 0x000000, bodyEI: 0.0, bit: 0x9aa0aa, bitEI: 0.0, light: [1.0, 0.706, 0.329], halo: 0x000000, haloOpacity: 0 },
+  { upTo: 9,  body: 0x886648, bodyEmissive: 0x3a1c08, bodyEI: 0.35, bit: 0xd7a259, bitEI: 0.15, light: [1.0, 0.62, 0.20], halo: 0xff8a3a, haloOpacity: 0.10 },
+  { upTo: 14, body: 0xb89656, bodyEmissive: 0x6a4a10, bodyEI: 0.45, bit: 0xffd27a, bitEI: 0.35, light: [1.0, 0.88, 0.36], halo: 0xffc060, haloOpacity: 0.20 },
+  { upTo: 19, body: 0x6fb4ff, bodyEmissive: 0x1a4c80, bodyEI: 0.65, bit: 0xa0e0ff, bitEI: 0.55, light: [0.45, 0.85, 1.0], halo: 0x46c8ff, haloOpacity: 0.30 },
+  { upTo: 29, body: 0xb080ff, bodyEmissive: 0x4a1a90, bodyEI: 0.85, bit: 0xd6c2ff, bitEI: 0.7, light: [0.78, 0.55, 1.0], halo: 0x8a5cff, haloOpacity: 0.4 },
+  { upTo: 999, body: 0xffa0d0, bodyEmissive: 0x802040, bodyEI: 1.1, bit: 0xffd0e0, bitEI: 0.95, light: [1.0, 0.55, 0.78], halo: 0xff80a0, haloOpacity: 0.55 },
+];
+let currentDrillTierKey = -1; // forces a refresh on first frame
 
 // render-side smoke pool
 const smoke = [];
@@ -199,22 +216,24 @@ export function init(canvas) {
   crateMesh = createCrateInstancedMesh();
   homeBody.add(crateMesh);
 
-  // launch pad + rocket, seated on the upper surface beside the smelter
-  PAD_NORMAL.set(C.LAUNCH_PAD.x, C.LAUNCH_PAD.y, C.LAUNCH_PAD.z).normalize();
-  PAD_POS.copy(PAD_NORMAL).multiplyScalar(7.9);
-  PAD_QUAT.setFromUnitVectors(UP, PAD_NORMAL);
-  RPAD_QUAT.copy(PAD_QUAT); // crate pad shares the upper-surface orientation
+  // crate-staging pad orientation (shared by all rockets — refined stockpile
+  // lives next to the smelter, regardless of how many launchpads exist)
   RPAD_POS.set(C.REFINED_PAD.x, C.REFINED_PAD.y, C.REFINED_PAD.z).normalize().multiplyScalar(7.9);
+  const _refNorm = _v.clone().set(C.LAUNCH_PAD.x, C.LAUNCH_PAD.y, C.LAUNCH_PAD.z).normalize();
+  RPAD_QUAT.setFromUnitVectors(UP, _refNorm);
 
-  launchPad = createLaunchPad();
-  launchPad.position.copy(PAD_POS);
-  launchPad.quaternion.copy(PAD_QUAT);
-  homeBody.add(launchPad);
+  // build initial launchpad(s) — at start there's always pad #0. Additional
+  // pads are added dynamically in drainEvents() when state.pads grows.
+  for (let i = 0; i < state.pads; i++) ensureLaunchPad(i);
 
-  rocket = createRocket();
-  rocket.position.copy(PAD_POS);
-  rocket.quaternion.copy(PAD_QUAT);
-  homeBody.add(rocket);
+  // clickable chunk mesh (manual mining: hovering ore the player taps)
+  chunkMesh = createChunkInstancedMesh();
+  homeBody.add(chunkMesh);
+
+  // drill halo — only visible at high upgrade tiers. instanced so the cost is
+  // flat regardless of drill count.
+  drillHalo = createDrillHaloInstancedMesh();
+  homeBody.add(drillHalo);
 
   // research lab — visible from the start, seated on the surface
   researchLab = createResearchLab();
@@ -289,6 +308,70 @@ export function init(canvas) {
 
 export function pickPlacement() { return pickSurfacePoint(asteroid); }
 
+/* Build a launchpad mesh + rocket pair at slot `i`. Each pad has its own
+   frame (position/normal/quaternion) so rockets spread around the upper
+   hemisphere as the player buys more. */
+function ensureLaunchPad(i) {
+  if (launchPads[i]) return launchPads[i];
+  const off = C.LAUNCH_PAD_OFFSETS[i] || C.LAUNCH_PAD;
+  const normal = new THREE.Vector3(off.x, off.y, off.z).normalize();
+  const pos = normal.clone().multiplyScalar(7.9);
+  const quat = new THREE.Quaternion().setFromUnitVectors(UP, normal);
+  const pad = createLaunchPad();
+  pad.position.copy(pos);
+  pad.quaternion.copy(quat);
+  homeBody.add(pad);
+  const rk = createRocket();
+  rk.position.copy(pos);
+  rk.quaternion.copy(quat);
+  homeBody.add(rk);
+  const entry = { pad, rocket: rk, pos, normal, quat };
+  launchPads[i] = entry;
+  return entry;
+}
+
+/* Hit-test a click against the asteroid mesh and return a homeBody-local
+   surface point + normal (or null if the click missed). Used by the manual
+   mining loop in main.js. */
+export function pickAsteroidClickPoint(clientX, clientY) {
+  if (!asteroid) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  _mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  _mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  _ray.setFromCamera(_mouse, camera);
+  // raycast against asteroid in world space, then invert through homeBody
+  // so the position lives in the spinning frame (chunks track the spin).
+  const hits = _ray.intersectObject(asteroid, false);
+  if (!hits.length) return null;
+  const h = hits[0];
+  const inv = _q2.copy(homeBody.quaternion).invert();
+  const lp = _pos2.copy(h.point).applyQuaternion(inv);
+  const ln = _v2.copy(h.face.normal).applyQuaternion(inv).normalize();
+  // accumulate a pockmark at the hit point for visible wear
+  addPockmark(lp, 0.6);
+  return { pos: { x: lp.x, y: lp.y, z: lp.z }, nrm: { x: ln.x, y: ln.y, z: ln.z } };
+}
+
+/* Hit-test a click against the chunk mesh — returns the matching chunk id
+   in state.chunks if hit, otherwise null. */
+export function pickChunkAt(clientX, clientY) {
+  if (!chunkMesh || chunkMesh.count <= 0) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  _mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  _mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  _ray.setFromCamera(_mouse, camera);
+  const hit = _ray.intersectObject(chunkMesh, false);
+  if (!hit.length || hit[0].instanceId == null) return null;
+  const idx = hit[0].instanceId;
+  const c = state.chunks[idx];
+  return c ? c.id : null;
+}
+
+// scratch added for pickAsteroidClickPoint (avoid creating each click)
+const _q2 = new THREE.Quaternion();
+const _pos2 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
+
 function spawnMeteor() {
   for (const mt of meteors) {
     if (mt.life > 0) continue;
@@ -352,10 +435,14 @@ function updateStorm(dt) {
   stormSub -= dt;
   if (stormSub <= 0) {
     stormSub = 0.16;
-    // launch plume bursts at the pad, in a quick succession
-    _v.copy(PAD_POS).addScaledVector(PAD_NORMAL, 0.4);
-    spawnFire(_v, PAD_NORMAL, 18);
-    spawnSmoke(_v, PAD_NORMAL, 6);
+    // launch plume bursts on every pad we own — more pads, bigger storm
+    for (let pi = 0; pi < launchPads.length; pi++) {
+      const pad = launchPads[pi];
+      if (!pad) continue;
+      _v.copy(pad.pos).addScaledVector(pad.normal, 0.4);
+      spawnFire(_v, pad.normal, 18);
+      spawnSmoke(_v, pad.normal, 6);
+    }
     shake = Math.max(shake, 0.35);
   }
 }
@@ -411,7 +498,62 @@ function basisQuat(up, fwd, outQuat) {
   outQuat.setFromRotationMatrix(_basis);
 }
 
+// ---- pockmarks: visible wear on the asteroid surface ----
+/* Darkens vertex colors near a hit point on the asteroid. We never modify
+   the geometry positions (would require recomputing normals every time);
+   shading + emissive falloff is enough to read as a crater. Cheap: scans
+   the position attribute once per drill cycle / click. */
+const _pp = new THREE.Vector3();
+function addPockmark(localPos, intensity = 0.5) {
+  if (!asteroid) return;
+  const geo = asteroid.geometry;
+  const posAttr = geo.attributes.position;
+  const colAttr = geo.attributes.color;
+  if (!posAttr || !colAttr) return;
+  const r2 = 1.8 * 1.8; // damage radius squared
+  for (let i = 0; i < posAttr.count; i++) {
+    _pp.fromBufferAttribute(posAttr, i);
+    const dx = _pp.x - localPos.x, dy = _pp.y - localPos.y, dz = _pp.z - localPos.z;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 > r2) continue;
+    const falloff = 1 - (d2 / r2);
+    const k = Math.max(0.55, 1 - intensity * falloff * 0.45);
+    const r = colAttr.getX(i) * k;
+    const g = colAttr.getY(i) * k;
+    const b = colAttr.getZ(i) * k;
+    colAttr.setXYZ(i, r, g, b);
+  }
+  colAttr.needsUpdate = true;
+}
+
+// ---- chunks: clickable hovering ore from manual mining ----
+const _chunkScale = new THREE.Vector3();
+function updateChunks(now) {
+  if (!chunkMesh) return;
+  const chunks = state.chunks;
+  const n = Math.min(chunks.length, C.CHUNK_POOL);
+  chunkMesh.count = n;
+  for (let i = 0; i < n; i++) {
+    const c = chunks[i];
+    _pos.set(c.x, c.y, c.z);
+    // wobble + spin so chunks are clearly interactive in world
+    const wob = Math.sin(now * 4 + c.id * 0.7) * 0.08;
+    const k = 1 + wob;
+    _q.setFromAxisAngle(UP, now * 1.2 + c.id);
+    _chunkScale.set(k, k, k);
+    _m.compose(_pos, _q, _chunkScale);
+    chunkMesh.setMatrixAt(i, _m);
+    // pulse color brighter when about to expire (last 1.5s)
+    const fade = c.life < 1.5 ? Math.max(0.3, c.life / 1.5) : 1;
+    _col.setRGB(1.0 * fade, 0.85 * fade, 0.35 * fade);
+    chunkMesh.setColorAt(i, _col);
+  }
+  chunkMesh.instanceMatrix.needsUpdate = true;
+  if (chunkMesh.instanceColor) chunkMesh.instanceColor.needsUpdate = true;
+}
+
 // ---- drill render caches ----
+const drillCyclesSeen = []; // per-drill cycle count we've last processed (for pockmarks)
 function ensureDrillCaches() {
   const drills = state.drills;
   for (let i = drillQuat.length; i < drills.length; i++) {
@@ -424,6 +566,29 @@ function ensureDrillCaches() {
     drillQuat.push(qn);
     drillBitAngle.push(0);
     drillPhase.push(Math.random() * Math.PI * 2);
+    drillCyclesSeen.push(d.cycles || 0);
+  }
+}
+
+/* Apply the current drillPower tier to the shared drill body/bit materials.
+   Costs nothing per-frame past the boundary check — we cache the active tier
+   key and only touch material props when the player crosses a level band. */
+function refreshDrillTier(tier) {
+  const bodyMat = drillBody.material;
+  const bitMat = drillBit.material;
+  bodyMat.color.setHex(tier.body);
+  bodyMat.emissive.setHex(tier.bodyEmissive);
+  bodyMat.emissiveIntensity = tier.bodyEI;
+  bodyMat.needsUpdate = true;
+  bitMat.color.setHex(tier.bit);
+  bitMat.emissive = bitMat.emissive || new THREE.Color();
+  bitMat.emissive.setHex(tier.bit);
+  bitMat.emissiveIntensity = tier.bitEI;
+  bitMat.needsUpdate = true;
+  // halo opacity (per-instance color is set elsewhere; opacity is material-wide)
+  if (drillHalo) {
+    drillHalo.material.opacity = tier.haloOpacity;
+    drillHalo.material.color.setHex(tier.halo || 0x000000);
   }
 }
 
@@ -433,16 +598,33 @@ function updateDrills(alpha, now, dt) {
   const n = Math.min(drills.length, C.DRILL_CAP);
   drillBody.count = drillBit.count = drillLight.count = n;
 
-  // visual growth from upgrades (global — all drills share levels)
+  // upgrade-tier visuals (color/emissive shared across all instances)
   const dpow = upgradeLevel("drillPower");
   const dspd = upgradeLevel("drillSpeed");
-  const bodyS = (1 + Math.min(dpow * 0.04, 0.7)) * DRILL_SCALE;
-  const bitS  = (1 + Math.min(dpow * 0.07, 1.1)) * DRILL_SCALE;
-  const lightS = (1 + Math.min(dspd * 0.05, 0.7)) * DRILL_SCALE;
-  const lightBoost = 1 + Math.min(dspd * 0.07, 0.9);
+  let tierIdx = 0;
+  for (let t = 0; t < DRILL_TIERS.length; t++) {
+    if (dpow <= DRILL_TIERS[t].upTo) { tierIdx = t; break; }
+  }
+  const tier = DRILL_TIERS[tierIdx];
+  if (tierIdx !== currentDrillTierKey) {
+    currentDrillTierKey = tierIdx;
+    refreshDrillTier(tier);
+  }
+
+  // visual growth from upgrades (global — all drills share levels)
+  const bodyS = (1 + Math.min(dpow * 0.025, 0.8)) * DRILL_SCALE;
+  const bitS  = (1 + Math.min(dpow * 0.04, 1.3)) * DRILL_SCALE;
+  const lightS = (1 + Math.min(dspd * 0.04, 0.8)) * DRILL_SCALE;
+  const lightBoost = 1 + Math.min(dspd * 0.05, 1.0);
   _scaleA.set(bodyS, bodyS, bodyS);
   _scaleB.set(bitS, bitS, bitS);
   _scaleC.set(lightS, lightS, lightS);
+
+  // halo only renders when the tier wants it (cheap: count==0 skips draw)
+  const showHalo = tier.haloOpacity > 0.01;
+  if (drillHalo) drillHalo.count = showHalo ? n : 0;
+  const haloScale = (1.0 + Math.min(dpow * 0.02, 0.6)) * DRILL_SCALE;
+  const haloPulse = 0.85 + Math.sin(now * 2.3) * 0.15;
 
   for (let i = 0; i < n; i++) {
     const d = drills[i];
@@ -462,14 +644,31 @@ function updateDrills(alpha, now, dt) {
 
     _m.compose(_pos, qn, _scaleC);
     drillLight.setMatrixAt(i, _m);
+    const lc = tier.light;
     const pulse = (1.3 + Math.sin(now * 5 + drillPhase[i]) * 0.7) * lightBoost;
-    _col.setRGB(1.0 * pulse, 0.706 * pulse, 0.329 * pulse);
+    _col.setRGB(lc[0] * pulse, lc[1] * pulse, lc[2] * pulse);
     drillLight.setColorAt(i, _col);
+
+    if (showHalo && drillHalo) {
+      const hs = haloScale * (1.0 + Math.sin(now * 3 + drillPhase[i]) * 0.08);
+      _scaleA.set(hs, hs, hs);
+      _m.compose(_pos, qn, _scaleA);
+      drillHalo.setMatrixAt(i, _m);
+    }
+
+    // wear the surface where this drill operates — once per completed cycle.
+    if (d.deploy >= 1 && d.cycles > drillCyclesSeen[i]) {
+      drillCyclesSeen[i] = d.cycles;
+      addPockmark(surf, 0.25);
+    }
   }
   drillBody.instanceMatrix.needsUpdate = true;
   drillBit.instanceMatrix.needsUpdate = true;
   drillLight.instanceMatrix.needsUpdate = true;
   if (drillLight.instanceColor) drillLight.instanceColor.needsUpdate = true;
+  if (showHalo && drillHalo) drillHalo.instanceMatrix.needsUpdate = true;
+  // reset body scale tracker since we used it for halos
+  _scaleA.set(bodyS, bodyS, bodyS);
 }
 
 // ---- rover poses + instances ----
@@ -695,10 +894,13 @@ function updateCrates() {
     _m.compose(_v, RPAD_QUAT, ONE);
     crateMesh.setMatrixAt(k++, _m);
   }
-  // loading fly-in: crates travel from the stack to the rocket's cargo door
-  const rk = state.rocket;
-  if (rk.phase === "LOADING") {
-    _pos.copy(PAD_POS).addScaledVector(PAD_NORMAL, 0.5); // door
+  // loading fly-in for each rocket independently — multiple pads can be
+  // loading at once, each pulling from the shared staging stack.
+  for (let pi = 0; pi < state.rockets.length; pi++) {
+    const rk = state.rockets[pi];
+    const pad = launchPads[pi];
+    if (!pad || rk.phase !== "LOADING") continue;
+    _pos.copy(pad.pos).addScaledVector(pad.normal, 0.5);
     for (let j = 0; j < rk.cargo && k < C.CRATE_POOL; j++) {
       crateWorld(j, _v);
       const t = smoothstep(clamp01(rk.loadT * 1.15 - j * 0.03));
@@ -711,43 +913,45 @@ function updateCrates() {
   crateMesh.instanceMatrix.needsUpdate = true;
 }
 
-// ---- rocket ----
+// ---- rockets (one per launchpad) ----
 function updateRocket(alpha, now, dt) {
-  const rk = state.rocket;
-  const fade = rk.fade;
-  rocket.visible = fade > 0.02;
-  if (!rocket.visible) return;
+  const capScale = 1 + Math.min(upgradeLevel("rocketCapacity") * 0.10, 1.3);
+  for (let pi = 0; pi < state.rockets.length; pi++) {
+    const rk = state.rockets[pi];
+    const pad = launchPads[pi];
+    if (!pad) continue;
+    const rocket = pad.rocket;
+    const fade = rk.fade;
+    rocket.visible = fade > 0.02;
+    if (!rocket.visible) continue;
 
-  const asc = clamp01(lerp(rk.ascentPrev, rk.ascent, alpha));
-  const offset = rk.phase === "ASCENT" ? asc * asc * C.ROCKET_ASCENT_HEIGHT : 0;
+    const asc = clamp01(lerp(rk.ascentPrev, rk.ascent, alpha));
+    const offset = rk.phase === "ASCENT" ? asc * asc * C.ROCKET_ASCENT_HEIGHT : 0;
 
-  _pos.copy(PAD_POS).addScaledVector(PAD_NORMAL, offset);
-  // slight launch wobble, fading as it climbs
-  if (rk.phase === "ASCENT") {
-    const wob = Math.sin(now * 22) * 0.12 * (1 - asc);
-    _right.set(1, 0, 0).applyQuaternion(PAD_QUAT);
-    _pos.addScaledVector(_right, wob);
-  }
-  rocket.position.copy(_pos);
-  rocket.quaternion.copy(PAD_QUAT);
-  // rocket visibly grows with Rocket Capacity upgrades
-  const capScale = 1 + Math.min(upgradeLevel("rocketCapacity") * 0.18, 1.3);
-  const s = Math.min(1, fade) * capScale;
-  rocket.scale.set(s, s, s);
+    _pos.copy(pad.pos).addScaledVector(pad.normal, offset);
+    // slight launch wobble, fading as it climbs
+    if (rk.phase === "ASCENT") {
+      const wob = Math.sin(now * 22 + pi * 0.7) * 0.12 * (1 - asc);
+      _right.set(1, 0, 0).applyQuaternion(pad.quat);
+      _pos.addScaledVector(_right, wob);
+    }
+    rocket.position.copy(_pos);
+    rocket.quaternion.copy(pad.quat);
+    const s = Math.min(1, fade) * capScale;
+    rocket.scale.set(s, s, s);
 
-  // thruster glow + exhaust during countdown/ascent
-  const glow = rocket.userData.glow;
-  if (rk.phase === "ASCENT") {
-    glow.opacity = 0.85;
-    // nozzle is at the rocket base
-    _v.copy(_pos); // base ~ rocket origin
-    const burst = asc < 0.12 ? 3 : 1; // heavier plume at ignition
-    spawnFire(_v, PAD_NORMAL, 6 * burst);
-    spawnSmoke(_v, PAD_NORMAL, 3 * burst);
-  } else if (rk.phase === "COUNTDOWN") {
-    glow.opacity = 0.2 + Math.abs(Math.sin(now * 12)) * 0.25;
-  } else {
-    glow.opacity = 0;
+    const glow = rocket.userData.glow;
+    if (rk.phase === "ASCENT") {
+      glow.opacity = 0.85;
+      _v.copy(_pos);
+      const burst = asc < 0.12 ? 3 : 1;
+      spawnFire(_v, pad.normal, 6 * burst);
+      spawnSmoke(_v, pad.normal, 3 * burst);
+    } else if (rk.phase === "COUNTDOWN") {
+      glow.opacity = 0.2 + Math.abs(Math.sin(now * 12 + pi * 0.5)) * 0.25;
+    } else {
+      glow.opacity = 0;
+    }
   }
 }
 
@@ -853,11 +1057,49 @@ function drainEvents() {
       audio.whoosh();
       ui.showLaunchBanner(e.payout);
       // project the pad to screen space for the floating "+$" text
+      const pad = launchPads[e.padIndex || 0] || launchPads[0];
+      const src = pad ? pad.pos : _v.set(C.LAUNCH_PAD.x, C.LAUNCH_PAD.y, C.LAUNCH_PAD.z);
+      _v.copy(src).applyQuaternion(homeBody.quaternion);
+      _ndc.copy(_v).project(camera);
+      const sx = (_ndc.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-_ndc.y * 0.5 + 0.5) * window.innerHeight;
+      ui.showFloatingPayout(sx, sy, e.payout);
+    } else if (e.type === "padBuilt") {
+      ensureLaunchPad(e.padIndex);
+      const pad = launchPads[e.padIndex];
+      if (pad) {
+        _v.copy(pad.pos).addScaledVector(pad.normal, 0.5);
+        spawnDust(_v.x, _v.y, _v.z, pad.normal.x, pad.normal.y, pad.normal.z, 30, 0.9, 0.95, 1.0, 3.0);
+        spawnSmoke(_v, pad.normal, 8);
+        shake = Math.max(shake, 0.3);
+        audio.purchaseChime && audio.purchaseChime();
+      }
+    } else if (e.type === "alienTech") {
+      // big sparkly burst at the drill — rainbow because tech is alien
+      const cols = [[1, 0.4, 0.9], [0.4, 1, 0.9], [1, 0.95, 0.45], [0.6, 0.7, 1]];
+      for (let c = 0; c < cols.length; c++) {
+        const col = cols[c];
+        spawnDust(e.x, e.y, e.z, e.nx, e.ny, e.nz, 10, col[0], col[1], col[2], 4.2);
+      }
+      shake = Math.max(shake, 0.22);
+      audio.achievementChime && audio.achievementChime();
+      // project the drill to screen space for a "+$jackpot" floater
       _v.set(e.x, e.y, e.z).applyQuaternion(homeBody.quaternion);
       _ndc.copy(_v).project(camera);
       const sx = (_ndc.x * 0.5 + 0.5) * window.innerWidth;
       const sy = (-_ndc.y * 0.5 + 0.5) * window.innerHeight;
       ui.showFloatingPayout(sx, sy, e.payout);
+    } else if (e.type === "asteroidHit") {
+      spawnDust(e.x, e.y, e.z, e.nx, e.ny, e.nz, 6, 0.95, 0.78, 0.45, 2.0);
+      audio.clunk && audio.clunk();
+    } else if (e.type === "chunkCollected") {
+      spawnDust(e.x, e.y, e.z, 0, 1, 0, 5, 1.0, 0.92, 0.45, 1.6);
+      audio.chaching && audio.chaching();
+      _v.set(e.x, e.y, e.z).applyQuaternion(homeBody.quaternion);
+      _ndc.copy(_v).project(camera);
+      const sx = (_ndc.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-_ndc.y * 0.5 + 0.5) * window.innerHeight;
+      ui.showFloatingPayout(sx, sy, e.value || 0);
     }
   }
   ev.length = 0;
@@ -920,6 +1162,7 @@ export function render(alpha) {
   updateOre(alpha);
   updateCrates();
   updateRocket(alpha, now, dt);
+  updateChunks(now);
   updateDust(dt);
   updateSmoke(dt);
 
