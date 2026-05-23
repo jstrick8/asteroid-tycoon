@@ -120,8 +120,9 @@ const ORE_COLOR = new THREE.Color(0.6, 0.78, 1.0);
 
 // global visual size of entities relative to the asteroid (1.0 = original).
 // Smaller numbers make the asteroid feel bigger by contrast.
-const DRILL_SCALE = 0.40;
-const ROVER_SCALE = 0.60;
+const DRILL_SCALE  = 0.40;
+const ROVER_SCALE  = 0.60;
+const ROCKET_SCALE = 0.50;   // halve visible rocket size
 
 // stockpile + cargo cube layouts
 const PILE = makePile(C.MAX_STOCKPILE + C.CARGO_CAP);
@@ -1068,7 +1069,12 @@ function updateRocket(alpha, now, dt) {
   const capScale = 1 + Math.min(upgradeLevel("rocketCapacity") * 0.10, 1.3);
   for (let pi = 0; pi < state.rockets.length; pi++) {
     const rk = state.rockets[pi];
-    const pad = launchPads[pi];
+    // Lazily build the pad mesh if missing. Happens when a save with
+    // multiple pads loads — render.init() runs BEFORE applySave restores
+    // state.pads, so only pad 0's mesh exists by default. This guard
+    // catches any later state.pads value (from save load OR padBuilt event
+    // races) and materializes the missing pad before we try to use it.
+    let pad = launchPads[pi] || ensureLaunchPad(pi);
     if (!pad) continue;
     const rocket = pad.rocket;
     const fade = rk.fade;
@@ -1087,7 +1093,7 @@ function updateRocket(alpha, now, dt) {
     }
     rocket.position.copy(_pos);
     rocket.quaternion.copy(pad.quat);
-    const s = Math.min(1, fade) * capScale;
+    const s = Math.min(1, fade) * capScale * ROCKET_SCALE;
     rocket.scale.set(s, s, s);
 
     const glow = rocket.userData.glow;
