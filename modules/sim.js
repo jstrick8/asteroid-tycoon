@@ -141,7 +141,9 @@ export function roverUnlocked() { return state.lifetimeEarnings >= C.ROVER_UNLOC
 
 // Stockpile / capacity / rocket tiers — the index is the upgrade level
 const STOCKPILE_TIERS = [10, 20, 40, 80, 160, 320];
-const CAPACITY_TIERS  = [1, 3, 5, 8, 12, 20, 30];     // starts low; capacity upgrade tier expanded
+// Tiered capacity per Rover Capacity level — first 7 keep the original
+// curve, then extended out 10 more steps for the bumped max level.
+const CAPACITY_TIERS  = [1, 3, 5, 8, 12, 20, 30, 45, 65, 90, 120, 160, 210, 275, 350, 450, 600];
 const ROCKET_TIERS    = [10, 14, 20, 30, 50, 75, 100, 150, 200];
 
 export function warpLevel(id) { return state.warpUpgrades[id] || 0; }

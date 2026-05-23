@@ -19,13 +19,13 @@ export const UPGRADES = {
   autoSurveyor:  { cat: "mining", name: "Auto-Surveyor",     base: 1500, max: 1,  desc: "Drills find richer nodes (+10% ore, permanent)" },
 
   // ---- FLEET ----
-  roverSpeed:     { cat: "fleet", name: "Rover Speed",      base: 200,   max: 30, unlock: 50000,  desc: "+5% rover speed" },
-  roverCapacity:  { cat: "fleet", name: "Rover Capacity",   base: 400,   max: 6,  unlock: 50000,  desc: "More ore per trip: 1 → 3 → 5 → 8 → 12 → 20 → 30" },
-  cargoBins:      { cat: "fleet", name: "Cargo Bins",       base: 700,   max: 25, unlock: 75000,  desc: "+10% rover cargo capacity per level (smooth growth on top of the Capacity tiers)" },
-  quickLoad:      { cat: "fleet", name: "Quick Load",       base: 600,   max: 15, unlock: 50000,  desc: "-8% rover load + unload time per level (min 0.1s each)" },
-  roverPads:      { cat: "fleet", name: "Expanded Pads",    base: 2000,  max: 5,  unlock: 100000, desc: "+50 max visible rovers per level" },
-  backgroundBoost:{ cat: "fleet", name: "Convoy Logistics", base: 4000,  max: 20, unlock: 250000, desc: "+10% background-fleet haul rate per level (off-screen rovers carry more)" },
-  drivetrain:     { cat: "fleet", name: "Reinforced Drivetrain", base: 1200, max: 20, unlock: 100000, desc: "+8% rover speed per level (stacks on Rover Speed for late-game scaling)" },
+  roverSpeed:     { cat: "fleet", name: "Rover Speed",      base: 200,   max: 40, unlock: 50000,  desc: "+5% rover speed" },
+  roverCapacity:  { cat: "fleet", name: "Rover Capacity",   base: 400,   max: 16, unlock: 50000,  desc: "Tiered ore per trip — climbs sharply at each new level" },
+  cargoBins:      { cat: "fleet", name: "Cargo Bins",       base: 700,   max: 35, unlock: 75000,  desc: "+10% rover cargo capacity per level (smooth growth on top of the Capacity tiers)" },
+  quickLoad:      { cat: "fleet", name: "Quick Load",       base: 600,   max: 25, unlock: 50000,  desc: "-8% rover load + unload time per level (min 0.1s each)" },
+  roverPads:      { cat: "fleet", name: "Expanded Pads",    base: 2000,  max: 15, unlock: 100000, desc: "+50 max visible rovers per level" },
+  backgroundBoost:{ cat: "fleet", name: "Convoy Logistics", base: 4000,  max: 30, unlock: 250000, desc: "+10% background-fleet haul rate per level (off-screen rovers carry more)" },
+  drivetrain:     { cat: "fleet", name: "Reinforced Drivetrain", base: 1200, max: 30, unlock: 100000, desc: "+8% rover speed per level (stacks on Rover Speed for late-game scaling)" },
 
   // ---- REFINING ----
   refineSpeed:    { cat: "refining", name: "Refining Speed",  base: 90,   max: 30, desc: "+10% smelter refining rate" },
