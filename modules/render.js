@@ -169,10 +169,14 @@ export function init(canvas) {
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.enablePan = false;
-  controls.minDistance = 16;
+  controls.minDistance = 12;
   controls.maxDistance = 70;
-  controls.minPolarAngle = THREE.MathUtils.degToRad(12);
-  controls.maxPolarAngle = THREE.MathUtils.degToRad(82);
+  // full 360° rotation in both axes — you can orbit under the asteroid,
+  // look straight up, or flip the camera over the pole.
+  controls.minPolarAngle = 0;
+  controls.maxPolarAngle = Math.PI;
+  controls.minAzimuthAngle = -Infinity;
+  controls.maxAzimuthAngle = Infinity;
 
   sun = new THREE.DirectionalLight(0xfff2dd, 2.4);
   sun.position.set(-30, 38, 20);
