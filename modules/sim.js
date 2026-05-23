@@ -186,7 +186,6 @@ export function recomputeStats() {
   s.rpMult = W("doubleRP") > 0 ? 2 : 1;
   s.contractTargetMult = W("fastContracts") > 0 ? 0.75 : 1;
 
-  s.autoBuyDrills = L("autoDrills") > 0;
   s.autoBuyRovers = L("autoRovers") > 0;
   s.offline = L("offline") > 0;
   s.telescope = L("telescope") > 0;

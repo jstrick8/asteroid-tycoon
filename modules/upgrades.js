@@ -30,7 +30,8 @@ export const UPGRADES = {
   rapidLaunch:    { cat: "refining", name: "Rapid Launch",    base: 200,  max: 20, desc: "+10% faster rocket turnaround" },
 
   // ---- RESEARCH (gated by lifetime earnings) ----
-  autoDrills: { cat: "research", name: "Auto-Buy Drills",      base: 5000,  max: 1, unlock: 25000,  desc: "Automatically build drills when affordable" },
+  // Auto-Buy Drills was removed — building drills is part of the deliberate
+  // early-game pacing (manual mining + manual placement on the slot grid).
   autoRovers: { cat: "research", name: "Auto-Buy Rovers",      base: 8000,  max: 1, unlock: 75000,  desc: "Automatically build rovers when affordable" },
   smelterEff: { cat: "research", name: "Improved Smelter",     base: 15000, max: 1, unlock: 50000,  desc: "1 ore refines into 1.5 material" },
   offline:    { cat: "research", name: "Offline Production",   base: 40000, max: 1, unlock: 100000, desc: "Colony keeps working while you're away" },
@@ -41,5 +42,5 @@ export const CATEGORIES = {
   mining:   ["drillPower", "drillSpeed", "stockpile", "autoSurveyor"],
   fleet:    ["roverSpeed", "roverCapacity", "roverPads"],
   refining: ["refineSpeed", "crateDensity", "rocketCapacity", "rapidLaunch"],
-  research: ["autoDrills", "autoRovers", "smelterEff", "offline", "telescope"],
+  research: ["autoRovers", "smelterEff", "offline", "telescope"],
 };

@@ -166,7 +166,8 @@ function autoBuy(frameTime) {
   if (autoTimer < 0.25) return;
   autoTimer = 0;
   const st = sim.state.stats;
-  if (st.autoBuyDrills && sim.canAfford(sim.drillCost())) deployDrill(false);
+  // Auto-buy drills was removed — placing drills on the slot grid is part
+  // of the intended hands-on early game.
   if (st.autoBuyRovers && sim.roverUnlocked() && sim.canAfford(sim.roverCost())) {
     // silent so the "first manual rover" achievement flag isn't tripped by auto
     sim.spend(sim.roverCost());
