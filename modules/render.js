@@ -17,7 +17,7 @@ import {
   createDrillMeshes, createRoverMeshes, createOreInstancedMesh,
   createDustInstancedMesh, createSmokeInstancedMesh, createCrateInstancedMesh,
   createLaunchPad, createRocket, createResearchLab, createWarpGate, WHEEL_OFFSETS,
-  createChunkInstancedMesh, createDrillHaloInstancedMesh,
+  createChunkInstancedMesh, createDrillHaloInstancedMesh, createDrillHitboxInstancedMesh,
 } from "./entities.js";
 import {
   state, prev, upgradeLevel, warpUnlocked,
@@ -30,7 +30,7 @@ import * as ui from "./ui.js";
 
 let renderer, scene, camera, controls;
 let homeBody, asteroid, starfield, smelter;
-let drillBody, drillBit, drillLight, drillHalo;
+let drillBody, drillBit, drillLight, drillHalo, drillHitbox;
 let roverBody, roverWheel, roverHeadlight, oreMesh, dustMesh;
 let crateMesh, smokeMesh, researchLab, sun, warpGate;
 let chunkMesh;
@@ -235,6 +235,11 @@ export function init(canvas) {
   drillHalo = createDrillHaloInstancedMesh();
   homeBody.add(drillHalo);
 
+  // invisible click hitbox around each drill — bigger than the visible mesh
+  // so taps don't have to land pixel-perfect on the tiny drill body.
+  drillHitbox = createDrillHitboxInstancedMesh();
+  homeBody.add(drillHitbox);
+
   // research lab — visible from the start, seated on the surface
   researchLab = createResearchLab();
   _dir.set(C.LAB_POS.x, C.LAB_POS.y, C.LAB_POS.z).normalize();
@@ -352,17 +357,16 @@ export function pickAsteroidClickPoint(clientX, clientY) {
   return { pos: { x: lp.x, y: lp.y, z: lp.z }, nrm: { x: ln.x, y: ln.y, z: ln.z } };
 }
 
-/* Hit-test a click against the drill bodies — returns the drill index in
-   state.drills if hit, otherwise null. Used to let the player scoop a
-   drill's stockpile out as collectable chunks in the early game (before
-   rovers unlock). */
+/* Hit-test a click against the drill hitboxes — returns the drill index in
+   state.drills if hit, otherwise null. Uses the larger invisible hitbox
+   mesh so taps don't have to land pixel-perfect on the tiny drill body. */
 export function pickDrillAt(clientX, clientY) {
-  if (!drillBody || drillBody.count <= 0) return null;
+  if (!drillHitbox || drillHitbox.count <= 0) return null;
   const rect = renderer.domElement.getBoundingClientRect();
   _mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
   _mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
   _ray.setFromCamera(_mouse, camera);
-  const hit = _ray.intersectObject(drillBody, false);
+  const hit = _ray.intersectObject(drillHitbox, false);
   if (!hit.length || hit[0].instanceId == null) return null;
   return hit[0].instanceId;
 }
@@ -617,6 +621,7 @@ function updateDrills(alpha, now, dt) {
   const drills = state.drills;
   const n = Math.min(drills.length, C.DRILL_CAP);
   drillBody.count = drillBit.count = drillLight.count = n;
+  if (drillHitbox) drillHitbox.count = n;
 
   // upgrade-tier visuals (color/emissive shared across all instances)
   const dpow = upgradeLevel("drillPower");
@@ -676,6 +681,13 @@ function updateDrills(alpha, now, dt) {
       drillHalo.setMatrixAt(i, _m);
     }
 
+    // invisible click hitbox — same world position, fixed generous size
+    if (drillHitbox) {
+      _scaleA.set(DRILL_SCALE, DRILL_SCALE, DRILL_SCALE);
+      _m.compose(_pos, qn, _scaleA);
+      drillHitbox.setMatrixAt(i, _m);
+    }
+
     // wear the surface where this drill operates — once per completed cycle.
     if (d.deploy >= 1 && d.cycles > drillCyclesSeen[i]) {
       drillCyclesSeen[i] = d.cycles;
@@ -692,6 +704,10 @@ function updateDrills(alpha, now, dt) {
   // never recomputes it — biting us for picking new/moved drills).
   drillBody.boundingSphere = null;
   drillBit.boundingSphere = null;
+  if (drillHitbox) {
+    drillHitbox.instanceMatrix.needsUpdate = true;
+    drillHitbox.boundingSphere = null;
+  }
   // reset body scale tracker since we used it for halos
   _scaleA.set(bodyS, bodyS, bodyS);
 }
@@ -1123,6 +1139,10 @@ function drainEvents() {
       // big bright spark burst — celebrates the player figuring it out
       spawnDust(e.x, e.y, e.z, e.nx, e.ny, e.nz, 12, 1.0, 0.92, 0.45, 2.8);
       audio.clunk && audio.clunk();
+    } else if (e.type === "drillEmpty") {
+      // small grey puff — tells the player "click registered, drill is empty"
+      spawnDust(e.x, e.y, e.z, e.nx, e.ny, e.nz, 3, 0.4, 0.4, 0.45, 1.2);
+      audio.hoverTick && audio.hoverTick();
     } else if (e.type === "chunkCollected") {
       spawnDust(e.x, e.y, e.z, 0, 1, 0, 5, 1.0, 0.92, 0.45, 1.6);
       audio.chaching && audio.chaching();

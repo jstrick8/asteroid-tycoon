@@ -231,6 +231,26 @@ export function createChunkInstancedMesh(capacity = C.CHUNK_POOL) {
   return mesh;
 }
 
+// ---------- DRILL CLICK HITBOX (invisible, generous picking target) ----------
+/* The visible drill is small; making the click target as small as the
+   visible mesh is frustrating. This hitbox is a transparent sphere ~3x the
+   drill radius, rendered at opacity 0 (still raycasts) so the user gets a
+   forgiving click area without changing how the drill looks. */
+export function createDrillHitboxInstancedMesh(capacity = C.DRILL_CAP) {
+  const geo = new THREE.SphereGeometry(1.6, 8, 6);
+  const mat = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    depthTest: false,
+  });
+  const mesh = instanced(geo, mat, capacity);
+  mesh.name = "drill-hitboxes";
+  mesh.count = 0;
+  mesh.renderOrder = -1;
+  return mesh;
+}
+
 // ---------- DRILL HALO (upgrade-tier visual aura) ----------
 export function createDrillHaloInstancedMesh(capacity = C.DRILL_CAP) {
   // a soft additive sphere that bloom can lift to a real glow

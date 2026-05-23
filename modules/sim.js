@@ -283,7 +283,13 @@ export function clickAsteroid(pos, nrm) {
    chunk worth more than the raw asteroid click — you earned this. */
 export function harvestDrill(drillIndex) {
   const d = state.drills[drillIndex];
-  if (!d || d.deploy < 1 || d.stockpile < 1) return 0;
+  if (!d) return 0;
+  // empty-drill feedback — push a "drill is empty" event so the player knows
+  // their click landed (vs silently falling through). still returns 0.
+  if (d.deploy < 1 || d.stockpile < 1) {
+    state.events.push({ type: "drillEmpty", x: d.x, y: d.y, z: d.z, nx: d.nx, ny: d.ny, nz: d.nz });
+    return 0;
+  }
   const amount = Math.min(8, Math.floor(d.stockpile)); // cap so a fat pile doesn't fountain too hard
   d.stockpile -= amount;
   // each scooped ore pops out as a clickable chunk. value scales with the

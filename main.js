@@ -266,11 +266,14 @@ canvas.addEventListener("pointerup", (e) => {
   // target than the next, so prefer the more-specific hit.
   const cid = render.pickChunkAt(e.clientX, e.clientY);
   if (cid != null) { sim.collectChunk(cid); return; }
-  // drill harvest — scoop the pile into clickable chunks
+  // drill harvest — scoop the pile into clickable chunks. always consume the
+  // click when a drill was targeted, even if empty (otherwise tapping an
+  // empty drill would silently fall through to the asteroid behind it,
+  // confusing the player).
   const did = render.pickDrillAt(e.clientX, e.clientY);
   if (did != null) {
-    const got = sim.harvestDrill(did);
-    if (got > 0) return; // we acted; do not also fire the asteroid click below
+    sim.harvestDrill(did);
+    return;
   }
   // otherwise hit the asteroid surface
   const hit = render.pickAsteroidClickPoint(e.clientX, e.clientY);
