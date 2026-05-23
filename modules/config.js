@@ -25,7 +25,7 @@ export const CLICK_DAMAGE      = 1;    // pockmark depth added per click
 
 export const BASE_DRILL_COST   = 100;   // first drill — earned by manual mining
 export const DRILL_COST_GROWTH = 1.15;
-export const BASE_ROVER_COST   = 5000;  // rovers are a midgame goal, not early
+export const BASE_ROVER_COST   = 20000; // rovers are a midgame goal, not early
 export const ROVER_COST_GROWTH = 1.6;
 export const ROVER_UNLOCK_LIFETIME = 50000;  // lifetime $ required before rovers can be built
 
