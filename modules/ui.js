@@ -212,6 +212,7 @@ export function init(callbacks = {}) {
   padBtn.addEventListener("click", () => cb.onBuildPad && cb.onBuildPad());
   els.buyBar.appendChild(padBtn);
   els.drillBtn = drillBtn; els.drillCost = drillBtn.querySelector(".build-cost");
+  els.drillBadge = drillBtn.querySelector(".build-badge");
   els.roverBtn = roverBtn; els.roverCost = roverBtn.querySelector(".build-cost");
   els.roverBadge = roverBtn.querySelector(".build-badge");
   els.padBtn = padBtn; els.padCost = padBtn.querySelector(".build-cost");
@@ -378,11 +379,24 @@ export function update() {
     }
   }
 
-  const bgText = state.bgRovers > 0 ? `+${state.bgRovers} FLEET` : "";
-  if (bgText !== lastBgText) {
-    lastBgText = bgText;
-    if (bgText) { els.roverBadge.textContent = bgText; els.roverBadge.hidden = false; }
-    else els.roverBadge.hidden = true;
+  // count badges next to each build button — always visible so the player
+  // can read the current fleet size at a glance. Rover badge folds in the
+  // off-screen background fleet when it exists ("× 17 (+12 BG)").
+  const drillCountText = `× ${state.drills.length}`;
+  if (els.drillBadge && drillCountText !== els.drillBadge.textContent) {
+    els.drillBadge.textContent = drillCountText;
+    els.drillBadge.hidden = false;
+  }
+  const totalRovers = state.rovers.length + state.bgRovers;
+  const roverCountText = state.bgRovers > 0
+    ? `× ${totalRovers} (+${state.bgRovers} BG)`
+    : `× ${totalRovers}`;
+  if (roverCountText !== lastBgText) {
+    lastBgText = roverCountText;
+    if (els.roverBadge) {
+      els.roverBadge.textContent = roverCountText;
+      els.roverBadge.hidden = false;
+    }
   }
 
   updateLaunchHud();
