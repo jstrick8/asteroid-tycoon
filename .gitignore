@@ -1,0 +1,23 @@
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor configs
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# Build artifacts (we don't have any, but future-proof)
+dist/
+build/
+node_modules/
+
+# Local-only helpers
+.claude/
+serve.json.local

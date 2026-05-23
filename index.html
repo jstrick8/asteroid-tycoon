@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<!--
+  ASTEROID TYCOON
+  ----------------
+  Run a local server from this folder, then open http://localhost:8000
+
+    python3 -m http.server 8000
+      (or)
+    npx serve
+
+  Do NOT open index.html via file:// — ES modules + importmap need http://
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASTEROID TYCOON</title>
+
+  <!-- Display + body fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter+Tight:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Three.js (no build step) -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- 3D render target -->
+  <canvas id="scene"></canvas>
+
+  <!-- ============ HTML UI OVERLAY ============ -->
+  <div id="ui-layer">
+
+    <!-- Top-left: cash + currencies -->
+    <div id="hud-cash" class="panel">
+      <span class="hud-label">CREDITS</span>
+      <span id="cash-value" class="hud-value">$0</span>
+      <span class="hud-sub"><span id="rp-value">0</span> RP&nbsp;·&nbsp;<span id="rep-value">0</span> REP&nbsp;·&nbsp;<span id="pc-value">0</span> PC</span>
+    </div>
+
+    <!-- Contracts launcher + active contract cards (left side) -->
+    <button id="contracts-btn" class="panel">◷ CONTRACTS</button>
+    <button id="stats-btn" class="panel">▤ LOG</button>
+    <button id="warp-btn" class="panel" hidden>✦ WARP DRIVE</button>
+    <button id="ach-btn" class="panel">★ ACHIEVEMENTS</button>
+    <button id="settings-btn" class="panel">⚙ SETTINGS</button>
+    <div id="contracts-active"></div>
+
+    <!-- active event effect badges (top center) -->
+    <div id="effect-badges"></div>
+
+    <!-- event banner (buff/debuff notifications) -->
+    <div id="event-banner"><span id="event-banner-text"></span></div>
+
+    <!-- Top-center: cargo launch status -->
+    <div id="launch-hud" class="panel">
+      <div class="launch-label">NEXT CARGO LAUNCH</div>
+      <div class="launch-bar"><div id="launch-fill"></div></div>
+      <div id="launch-status">0 / 10 CRATES</div>
+    </div>
+
+    <!-- Launch banner (slides in during a launch) -->
+    <div id="launch-banner"><span id="launch-banner-text">CARGO LAUNCH</span></div>
+
+    <!-- Floating payout text spawns here -->
+    <div id="float-layer"></div>
+
+    <!-- Top-right: FPS counter (toggle with F) -->
+    <div id="fps-counter" class="panel">
+      <div><span class="fps-key">FPS</span> <span id="fps-now">--</span></div>
+      <div><span class="fps-key">REFRESH</span> <span id="fps-target">--</span>Hz</div>
+    </div>
+
+    <!-- Right side: tab navigation -->
+    <nav id="tab-nav">
+      <button class="tab active" data-tab="mining">MINING</button>
+      <button class="tab" data-tab="fleet">FLEET</button>
+      <button class="tab" data-tab="refining">REFINING</button>
+      <button class="tab" data-tab="research">RESEARCH</button>
+    </nav>
+
+    <!-- Upgrade panel (shows the active category) -->
+    <div id="upgrade-panel" class="panel">
+      <div id="upgrade-cat-title">MINING</div>
+      <div id="upgrade-list"></div>
+      <div id="upgrade-lock" hidden>
+        <div class="lock-title">RESEARCH LOCKED</div>
+        <div class="lock-sub">Earn $10,000 lifetime to unlock</div>
+      </div>
+    </div>
+
+    <!-- Bottom: buy bar -->
+    <div id="buy-bar" class="panel">
+      <div class="buy-bar-empty">// BUILD MODULES WILL APPEAR HERE</div>
+    </div>
+
+  </div>
+
+  <!-- Upgrade confirmation modal -->
+  <div id="upgrade-modal" hidden>
+    <div class="modal-box panel">
+      <div id="modal-title">UPGRADE</div>
+      <div id="modal-desc"></div>
+      <div id="modal-meta">
+        <span id="modal-level"></span>
+        <span id="modal-cost"></span>
+      </div>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="modal-btn">CANCEL</button>
+        <button id="modal-confirm" class="modal-btn confirm">CONFIRM</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contracts modal -->
+  <div id="contracts-modal" hidden>
+    <div class="modal-box wide panel">
+      <div class="cm-head">
+        <div id="cm-title">AVAILABLE CONTRACTS</div>
+        <div id="cm-currency"></div>
+      </div>
+      <div id="cm-list"></div>
+      <div class="modal-actions">
+        <button id="cm-refresh" class="modal-btn">REFRESH · 3 RP</button>
+        <button id="cm-close" class="modal-btn confirm">CLOSE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contract completion banner -->
+  <div id="contract-banner"><span id="contract-banner-text"></span></div>
+
+  <!-- Choice event modal (sim keeps running) -->
+  <div id="choice-modal" hidden>
+    <div class="modal-box panel">
+      <div class="cm-head"><div id="choice-title">INCOMING TRANSMISSION</div><div id="choice-timer">15</div></div>
+      <div id="choice-desc"></div>
+      <div class="modal-actions">
+        <button id="choice-decline" class="modal-btn"></button>
+        <button id="choice-accept" class="modal-btn confirm"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Statistics / event log / save management modal -->
+  <div id="stats-modal" hidden>
+    <div class="modal-box wide panel">
+      <div class="cm-head"><div id="cm-title">STATISTICS</div></div>
+      <div id="stats-body"></div>
+      <div class="stats-section-title">EVENT LOG</div>
+      <div id="event-log-list"></div>
+      <div class="stats-section-title">SAVE MANAGEMENT</div>
+      <div id="save-mgmt">
+        <textarea id="save-text" placeholder="Exported save appears here / paste a save to import" rows="2"></textarea>
+        <div class="save-buttons">
+          <button id="save-export" class="modal-btn">EXPORT</button>
+          <button id="save-import" class="modal-btn">IMPORT</button>
+          <button id="save-reset" class="modal-btn danger">HARD RESET</button>
+        </div>
+      </div>
+      <div class="modal-actions"><button id="stats-close" class="modal-btn confirm">CLOSE</button></div>
+    </div>
+  </div>
+
+  <!-- Achievements modal -->
+  <div id="ach-modal" hidden>
+    <div class="modal-box wide panel">
+      <div class="cm-head"><div id="cm-title">ACHIEVEMENTS</div><div id="ach-summary"></div></div>
+      <div id="ach-grid"></div>
+      <div class="modal-actions"><button id="ach-close" class="modal-btn confirm">CLOSE</button></div>
+    </div>
+  </div>
+
+  <!-- Welcome back (offline progress) modal -->
+  <div id="welcome-modal" hidden>
+    <div class="modal-box panel">
+      <div id="welcome-title">WELCOME BACK, CAPTAIN</div>
+      <div id="welcome-body"></div>
+      <div class="modal-actions"><button id="welcome-collect" class="modal-btn confirm">COLLECT</button></div>
+    </div>
+  </div>
+
+  <!-- Achievement toast -->
+  <div id="ach-toast"><span id="ach-toast-text"></span></div>
+
+  <!-- Settings modal -->
+  <div id="settings-modal" hidden>
+    <div class="modal-box panel">
+      <div class="cm-head"><div id="cm-title">SETTINGS</div></div>
+      <div id="settings-body"></div>
+      <div class="modal-actions">
+        <button id="settings-reset" class="modal-btn danger">RESET DEFAULTS</button>
+        <button id="settings-close" class="modal-btn confirm">CLOSE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Onboarding tooltip (first run) -->
+  <div id="onboard" hidden>
+    <div id="onboard-text"></div>
+    <button id="onboard-dismiss">GOT IT</button>
+  </div>
+
+  <!-- Hover tooltip -->
+  <div id="entity-tooltip"></div>
+
+  <!-- Loading splash -->
+  <div id="splash">
+    <div class="splash-title">ASTEROID TYCOON</div>
+    <div class="splash-bar"><div id="splash-fill"></div></div>
+  </div>
+
+  <!-- debuff vignette -->
+  <div id="vignette"></div>
+
+  <!-- Warp Drive modal -->
+  <div id="warp-modal" hidden>
+    <div class="modal-box wide panel">
+      <div class="cm-head">
+        <div id="cm-title">WARP DRIVE</div>
+        <div id="warp-cores-label"></div>
+      </div>
+      <div class="warp-cols">
+        <div class="warp-col">
+          <div class="warp-subhead">PERMANENT UPGRADES</div>
+          <div id="warp-tree"></div>
+        </div>
+        <div class="warp-col">
+          <div class="warp-subhead">JUMP TO SECTOR</div>
+          <div id="sector-select"></div>
+          <div id="warp-yield"></div>
+          <button id="warp-now" class="cm-accept">WARP NOW</button>
+        </div>
+      </div>
+      <div class="modal-actions"><button id="warp-close" class="modal-btn confirm">CLOSE</button></div>
+    </div>
+  </div>
+
+  <!-- Warp result modal -->
+  <div id="warp-result" hidden>
+    <div class="modal-box panel">
+      <div id="warp-result-title"></div>
+      <div id="warp-result-sub"></div>
+      <div class="modal-actions"><button id="warp-result-close" class="modal-btn confirm">CONTINUE</button></div>
+    </div>
+  </div>
+
+  <!-- Warp white-out flash -->
+  <div id="warp-flash"></div>
+
+  <!-- Purchase screen flash -->
+  <div id="flash"></div>
+
+  <!-- Scanline overlay (drawn above everything, pointer-events none) -->
+  <div id="scanlines"></div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
