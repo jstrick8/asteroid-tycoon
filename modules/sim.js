@@ -633,10 +633,14 @@ function stepRocket(rk, dt) {
       const batch = batchCrates();
       const triggerFull = batch;
       const triggerEarly = Math.max(1, Math.floor(batch * C.ROCKET_AUTO_LAUNCH_FRACTION));
+      // Two launch conditions only — no more "fire on a single crate"
+      // fallback. With multiple pads pulling from a shared refinedStock
+      // pool, that fallback caused absurd $50 partial launches while
+      // siblings were getting full $50k batches. Now every launch is at
+      // least 80% of a batch.
       const wantsLaunch =
         state.refinedStock >= triggerFull ||
-        (state.refinedStock >= triggerEarly && rk.idleTimer >= C.ROCKET_AUTO_LAUNCH_TIMEOUT) ||
-        (state.refinedStock >= 1 && rk.idleTimer >= C.ROCKET_AUTO_LAUNCH_TIMEOUT * 2);
+        (state.refinedStock >= triggerEarly && rk.idleTimer >= C.ROCKET_AUTO_LAUNCH_TIMEOUT);
       if (wantsLaunch) {
         const take = Math.min(batch, Math.floor(state.refinedStock));
         if (take >= 1) {
