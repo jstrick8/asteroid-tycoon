@@ -336,8 +336,10 @@ function ensureLaunchPad(i) {
 }
 
 /* Hit-test a click against the asteroid mesh and return a homeBody-local
-   surface point + normal (or null if the click missed). Used by the manual
-   mining loop in main.js. */
+   surface point + normal (or null if the click missed, OR if the click
+   landed near an existing drill — drills get their own exclusion zone so
+   the player can't accidentally manual-mine on top of their own drill). */
+const DRILL_EXCLUSION_R2 = 2.4 * 2.4;
 export function pickAsteroidClickPoint(clientX, clientY) {
   if (!asteroid) return null;
   const rect = renderer.domElement.getBoundingClientRect();
@@ -352,6 +354,15 @@ export function pickAsteroidClickPoint(clientX, clientY) {
   const inv = _q2.copy(homeBody.quaternion).invert();
   const lp = _pos2.copy(h.point).applyQuaternion(inv);
   const ln = _v2.copy(h.face.normal).applyQuaternion(inv).normalize();
+  // drill exclusion zone — if the hit landed too close to any drill, treat
+  // it as a missed click so the player can't manual-mine around their
+  // already-deployed drills.
+  const drills = state.drills;
+  for (let i = 0; i < drills.length; i++) {
+    const d = drills[i];
+    const dx = lp.x - d.x, dy = lp.y - d.y, dz = lp.z - d.z;
+    if (dx * dx + dy * dy + dz * dz < DRILL_EXCLUSION_R2) return null;
+  }
   // accumulate a pockmark at the hit point for visible wear
   addPockmark(lp, 0.6);
   return { pos: { x: lp.x, y: lp.y, z: lp.z }, nrm: { x: ln.x, y: ln.y, z: ln.z } };
@@ -562,9 +573,15 @@ function updateChunks(now) {
     _chunkScale.set(k, k, k);
     _m.compose(_pos, _q, _chunkScale);
     chunkMesh.setMatrixAt(i, _m);
-    // pulse color brighter when about to expire (last 1.5s)
+    // pulse color brighter when about to expire (last 1.5s).
+    // drill-harvested chunks render blue (you refined this!); raw asteroid
+    // rubble stays warm gold so the player can read the difference at a glance.
     const fade = c.life < 1.5 ? Math.max(0.3, c.life / 1.5) : 1;
-    _col.setRGB(1.0 * fade, 0.85 * fade, 0.35 * fade);
+    if (c.kind === "drill") {
+      _col.setRGB(0.35 * fade, 0.78 * fade, 1.0 * fade);
+    } else {
+      _col.setRGB(1.0 * fade, 0.85 * fade, 0.35 * fade);
+    }
     chunkMesh.setColorAt(i, _col);
   }
   chunkMesh.instanceMatrix.needsUpdate = true;

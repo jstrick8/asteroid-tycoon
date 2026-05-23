@@ -264,6 +264,7 @@ export function clickAsteroid(pos, nrm) {
   const v = C.CLICK_CHUNK_VEL * (0.7 + Math.random() * 0.6);
   state.chunks.push({
     id,
+    kind: "asteroid",                    // raw asteroid rubble (gold visual)
     x: pos.x, y: pos.y, z: pos.z,
     vx: nrm.x * v + (Math.random() - 0.5) * 1.6,
     vy: nrm.y * v + (Math.random() - 0.5) * 1.6,
@@ -301,6 +302,7 @@ export function harvestDrill(drillIndex) {
     const v = C.CLICK_CHUNK_VEL * (0.8 + Math.random() * 0.5);
     state.chunks.push({
       id,
+      kind: "drill",                     // refined drill ore (blue visual)
       x: d.x, y: d.y, z: d.z,
       vx: d.nx * v + (Math.random() - 0.5) * 2.4,
       vy: d.ny * v + (Math.random() - 0.5) * 2.4,

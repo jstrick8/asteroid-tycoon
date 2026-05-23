@@ -215,13 +215,15 @@ export function createSmokeInstancedMesh(capacity = C.SMOKE_POOL) {
 }
 
 // ---------- CHUNK (clickable manual-mining ore — hovering, glowy) ----------
+/* Neutral white base color + emissive so the per-instance color (set in
+   render.updateChunks) drives whether the chunk reads as gold (asteroid
+   rubble) or blue (refined drill ore). */
 export function createChunkInstancedMesh(capacity = C.CHUNK_POOL) {
-  // bigger + glowier than stockpile ore so the player can find them in space
   const geo = new THREE.OctahedronGeometry(0.38, 0);
   const mat = new THREE.MeshStandardMaterial({
-    color: 0xfff0a0,
-    emissive: 0xffae3b,
-    emissiveIntensity: 1.6,
+    color: 0xffffff,
+    emissive: 0xffffff,
+    emissiveIntensity: 1.5,
     metalness: 0.2,
     roughness: 0.35,
     flatShading: true,
