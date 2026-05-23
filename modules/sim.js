@@ -276,6 +276,38 @@ export function clickAsteroid(pos, nrm) {
   return true;
 }
 
+/* Player clicks a drill — scoop its stockpile out as flying chunks the
+   player can then tap for cash. Bridge mechanic between "first drill" and
+   "rovers unlocked": gives you a way to monetize your drill's output before
+   the automated hauling chain comes online. Each ore in the pile spawns a
+   chunk worth more than the raw asteroid click — you earned this. */
+export function harvestDrill(drillIndex) {
+  const d = state.drills[drillIndex];
+  if (!d || d.deploy < 1 || d.stockpile < 1) return 0;
+  const amount = Math.min(8, Math.floor(d.stockpile)); // cap so a fat pile doesn't fountain too hard
+  d.stockpile -= amount;
+  // each scooped ore pops out as a clickable chunk. value scales with the
+  // current crateValue (post-upgrades) so harvesting stays viable even when
+  // the player has lots of drillPower / crateDensity upgrades.
+  const baseValue = Math.max(3, Math.round(crateValue() * 0.5));
+  for (let i = 0; i < amount; i++) {
+    const id = ++state._chunkId;
+    const v = C.CLICK_CHUNK_VEL * (0.8 + Math.random() * 0.5);
+    state.chunks.push({
+      id,
+      x: d.x, y: d.y, z: d.z,
+      vx: d.nx * v + (Math.random() - 0.5) * 2.4,
+      vy: d.ny * v + (Math.random() - 0.5) * 2.4,
+      vz: d.nz * v + (Math.random() - 0.5) * 2.4,
+      life: C.CLICK_CHUNK_LIFE,
+      value: baseValue,
+      nx: d.nx, ny: d.ny, nz: d.nz,
+    });
+  }
+  state.events.push({ type: "drillHarvested", x: d.x, y: d.y, z: d.z, nx: d.nx, ny: d.ny, nz: d.nz, amount });
+  return amount;
+}
+
 /* Player clicks a chunk in the world: collect, pay out, despawn. */
 export function collectChunk(id) {
   for (let i = 0; i < state.chunks.length; i++) {

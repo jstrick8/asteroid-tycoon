@@ -262,9 +262,16 @@ canvas.addEventListener("pointerup", (e) => {
   const dy = e.clientY - clickDown.y;
   const dt = performance.now() - clickDown.t;
   if (Math.hypot(dx, dy) > 8 || dt > 400) return; // it was a drag, ignore
-  // chunk first (small target, satisfying to collect)
+  // priority: chunks > drills > asteroid. each is a smaller/more specific
+  // target than the next, so prefer the more-specific hit.
   const cid = render.pickChunkAt(e.clientX, e.clientY);
   if (cid != null) { sim.collectChunk(cid); return; }
+  // drill harvest — scoop the pile into clickable chunks
+  const did = render.pickDrillAt(e.clientX, e.clientY);
+  if (did != null) {
+    const got = sim.harvestDrill(did);
+    if (got > 0) return; // we acted; do not also fire the asteroid click below
+  }
   // otherwise hit the asteroid surface
   const hit = render.pickAsteroidClickPoint(e.clientX, e.clientY);
   if (hit) sim.clickAsteroid(hit.pos, hit.nrm);

@@ -352,6 +352,21 @@ export function pickAsteroidClickPoint(clientX, clientY) {
   return { pos: { x: lp.x, y: lp.y, z: lp.z }, nrm: { x: ln.x, y: ln.y, z: ln.z } };
 }
 
+/* Hit-test a click against the drill bodies — returns the drill index in
+   state.drills if hit, otherwise null. Used to let the player scoop a
+   drill's stockpile out as collectable chunks in the early game (before
+   rovers unlock). */
+export function pickDrillAt(clientX, clientY) {
+  if (!drillBody || drillBody.count <= 0) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  _mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  _mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  _ray.setFromCamera(_mouse, camera);
+  const hit = _ray.intersectObject(drillBody, false);
+  if (!hit.length || hit[0].instanceId == null) return null;
+  return hit[0].instanceId;
+}
+
 /* Hit-test a click against the chunk mesh — returns the matching chunk id
    in state.chunks if hit, otherwise null. */
 export function pickChunkAt(clientX, clientY) {
@@ -672,6 +687,11 @@ function updateDrills(alpha, now, dt) {
   drillLight.instanceMatrix.needsUpdate = true;
   if (drillLight.instanceColor) drillLight.instanceColor.needsUpdate = true;
   if (showHalo && drillHalo) drillHalo.instanceMatrix.needsUpdate = true;
+  // invalidate cached bounding spheres so click raycasts see the latest
+  // instance matrices (Three.js caches the sphere on the first raycast and
+  // never recomputes it — biting us for picking new/moved drills).
+  drillBody.boundingSphere = null;
+  drillBit.boundingSphere = null;
   // reset body scale tracker since we used it for halos
   _scaleA.set(bodyS, bodyS, bodyS);
 }
@@ -762,6 +782,8 @@ function updateRovers(alpha, now, dt) {
   roverBody.instanceMatrix.needsUpdate = true;
   roverHeadlight.instanceMatrix.needsUpdate = true;
   roverWheel.instanceMatrix.needsUpdate = true;
+  // rovers move every frame — null the cached sphere so picking stays accurate
+  roverBody.boundingSphere = null;
 }
 
 // ---- ore cubes: stockpiles (+ in-transit) and rover cargo ----
@@ -1096,6 +1118,10 @@ function drainEvents() {
       ui.showFloatingPayout(sx, sy, e.payout);
     } else if (e.type === "asteroidHit") {
       spawnDust(e.x, e.y, e.z, e.nx, e.ny, e.nz, 6, 0.95, 0.78, 0.45, 2.0);
+      audio.clunk && audio.clunk();
+    } else if (e.type === "drillHarvested") {
+      // big bright spark burst — celebrates the player figuring it out
+      spawnDust(e.x, e.y, e.z, e.nx, e.ny, e.nz, 12, 1.0, 0.92, 0.45, 2.8);
       audio.clunk && audio.clunk();
     } else if (e.type === "chunkCollected") {
       spawnDust(e.x, e.y, e.z, 0, 1, 0, 5, 1.0, 0.92, 0.45, 1.6);
