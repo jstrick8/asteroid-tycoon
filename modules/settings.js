@@ -5,6 +5,11 @@
 
 const KEY = "asteroid-tycoon/settings/v1";
 
+// bump this whenever the onboarding text/structure changes so returning
+// players see the updated tutorial instead of being stuck on a stale
+// "you've seen it" flag.
+export const ONBOARDING_VERSION = 2;
+
 const DEFAULTS = {
   quality: "high",        // low | medium | high | ultra
   fpsVisible: false,
@@ -15,6 +20,7 @@ const DEFAULTS = {
   shakeIntensity: 1.0,    // 0..2 slider
   autosaveSec: 5,
   onboardingDone: false,
+  onboardingVersion: 0,   // last version the player completed
 };
 
 export const settings = { ...DEFAULTS };
@@ -31,6 +37,11 @@ export function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) Object.assign(settings, JSON.parse(raw));
   } catch (e) { /* ignore */ }
+  // if the saved tutorial version is older than the current build, reset
+  // onboardingDone so the player gets re-introduced to the new flow.
+  if ((settings.onboardingVersion || 0) < ONBOARDING_VERSION) {
+    settings.onboardingDone = false;
+  }
 }
 export function save() {
   try { localStorage.setItem(KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }

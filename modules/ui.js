@@ -18,7 +18,7 @@ import { UPGRADES, CATEGORIES } from "./upgrades.js";
 import { WARP_UPGRADES, WARP_ORDER } from "./warp.js";
 import { getSector } from "./sectors.js";
 import { ACHIEVEMENTS, fmtBig } from "./achievements.js";
-import { settings, save as saveSettings, reset as resetSettings, QUALITY } from "./settings.js";
+import { settings, save as saveSettings, reset as resetSettings, QUALITY, ONBOARDING_VERSION } from "./settings.js";
 import * as audio from "./audio.js";
 import * as radio from "./radio.js";
 
@@ -640,16 +640,27 @@ function buildSettings() {
 function dismissOnboard() {
   onboardAck = onboardShown;
   els.onboard.hidden = true;
-  if (onboardShown >= 3) { settings.onboardingDone = true; saveSettings(); }
+  if (onboardShown >= 4) {
+    settings.onboardingDone = true;
+    settings.onboardingVersion = ONBOARDING_VERSION;
+    saveSettings();
+  }
 }
+/* Tutorial steps mapped to the actual progression beats of the new game:
+   manual click → first drill → rover unlock → first launch. Each step fires
+   ONCE when its milestone is hit and the player can dismiss it. */
 const ONBOARD_TEXT = {
-  1: "Click 'Build Drill' (bottom bar) to start mining the asteroid.",
-  2: "Drills produce ore into a pile. Build a Rover to haul it to the smelter.",
-  3: "Cargo Rockets launch automatically when refined crates pile up — that's your big payout. Good luck, Captain.",
+  1: "[STEP 1/4]  Click the asteroid surface to chip off ore, then tap the gold chunks to collect $2 each. Earn $100 to buy your first Drill (bottom bar).",
+  2: "[STEP 2/4]  Drill deployed! Click directly on the drill to scoop its ore pile out as blue chunks worth far more than asteroid clicks. Build more drills to scale up.",
+  3: "[STEP 3/4]  Rovers unlocked! Build a Rover (bottom bar) to start automated hauling — your drills will feed the smelter, crates will pile up, and cargo rockets will launch on their own.",
+  4: "[STEP 4/4]  Empire online. Buy extra Launchpads for parallel rockets, take Contracts (left side) for bonus payouts, watch for random Events, and Warp to richer sectors at $1T lifetime. Good luck out there, Captain.",
 };
 function updateOnboarding() {
   if (settings.onboardingDone) { if (!els.onboard.hidden) els.onboard.hidden = true; return; }
-  const target = state.totalOre > 0 ? 3 : state.drills.length >= 1 ? 2 : 1;
+  const target =
+    state.totalLaunches >= 1 ? 4 :
+    roverUnlocked() ? 3 :
+    state.drills.length >= 1 ? 2 : 1;
   if (target > onboardAck && onboardShown !== target) {
     onboardShown = target;
     els.onboardText.textContent = ONBOARD_TEXT[target];
