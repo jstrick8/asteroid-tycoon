@@ -7,7 +7,7 @@
 
 import * as C from "./config.js";
 import { UPGRADES, GROWTH, CATEGORIES } from "./upgrades.js";
-import { generateContract } from "./contracts.js";
+import { generateContract, getNextContractId, setNextContractId } from "./contracts.js";
 import { rollKind, makeEvent } from "./events.js";
 import { getSector, MAX_SECTOR } from "./sectors.js";
 import { WARP_UPGRADES, warpCostFor } from "./warp.js";
@@ -1091,6 +1091,7 @@ export function serialize() {
     pads: state.pads,
     upgrades: state.upgrades,
     contracts: state.contracts,
+    contractNextId: getNextContractId(),
     eventLog: state.eventLog,
     nextContractGold: state.nextContractGold,
     warpCores: state.warpCores,
@@ -1136,6 +1137,13 @@ export function applySave(data) {
   for (let i = 0; i < state.pads; i++) state.rockets.push(makeRocket(i));
   if (data.upgrades) state.upgrades = data.upgrades;
   if (data.contracts && data.contracts.initialized) state.contracts = data.contracts;
+  // Reseed the contract ID counter so new contracts can't collide with the
+  // ones already in active/available. Bump past the saved counter AND the
+  // max id of any restored contract — covers older saves without the field.
+  let maxId = data.contractNextId || 1;
+  for (const c of (state.contracts.active || [])) if (c.id >= maxId) maxId = c.id + 1;
+  for (const c of (state.contracts.available || [])) if (c.id >= maxId) maxId = c.id + 1;
+  setNextContractId(maxId);
   if (Array.isArray(data.eventLog)) state.eventLog = data.eventLog;
   state.nextContractGold = !!data.nextContractGold;
   state.warpCores = num(data.warpCores, 0);

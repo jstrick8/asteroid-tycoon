@@ -6,8 +6,18 @@
    gold (150%). Deadline/startMetric are filled in on accept (sim).
    ============================================================ */
 
+/* Contract IDs need to persist across page reloads — if the counter
+   resets to 1 on load while saved contracts still hold ids 5/6/7, the
+   next generated contract collides with an existing active contract and
+   the UI's cardRefs lookup gets mangled. sim.js seeds the counter from
+   the save (and from the high-water mark of loaded contracts) before any
+   new contracts are generated. */
 let _id = 1;
 function nextId() { return _id++; }
+export function getNextContractId() { return _id; }
+export function setNextContractId(v) {
+  if (Number.isFinite(v) && v > _id) _id = v;
+}
 const ri = (n) => Math.max(1, Math.round(n));
 
 /* snap = {
