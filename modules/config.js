@@ -8,7 +8,10 @@
 // Player starts with NO cash. Must manually mine the asteroid for the
 // first ~$100 to afford the first drill. Pure clicker phase.
 export const STARTING_CASH    = 0;
-export const PROD_INTERVAL    = 3.0;   // seconds per ore, per drill
+// Drills run on a slow base cycle so the manual mining loop stays relevant
+// even after the first drill is built — players have to keep their hands
+// busy (click-to-harvest) until the Drill Speed upgrades catch up.
+export const PROD_INTERVAL    = 10.0;  // seconds per ore, per drill (was 3.0 — 70% slower)
 export const MAX_STOCKPILE    = 10;    // ore a drill holds before it pauses
 export const ORE_VALUE        = 1;     // $ per ore delivered
 
@@ -41,6 +44,29 @@ export const ROVER_HOVER   = 0.35;  // ride height above the surface
 export const WHEEL_RADIUS  = 0.18;
 // rovers depart from / return to a point on the surface under the smelter
 export const ROVER_HOME    = { x: 0, y: 1, z: 0, r: 8.0 }; // dir (unit-ish) + radius
+
+// --- mining zone (dedicated drill slots on the lower hemisphere) ---
+/* Drills used to land on random asteroid triangles, leaving an untidy
+   scatter all over the surface. They now snap to a pre-computed Fibonacci
+   spiral on the LOWER hemisphere — top half stays clean for the smelter,
+   rockets, lab, and warp gate. Player gets a clean visual split between
+   "industrial" (top) and "extraction" (bottom). */
+function _generateLowerSpiral(n) {
+  const phi = (1 + Math.sqrt(5)) / 2;
+  const out = [];
+  // walk an extended spiral on the full sphere and keep the lower-hemi points
+  for (let i = 0; out.length < n && i < n * 3; i++) {
+    const t = (i + 0.5) / (n * 2);
+    const y = 1 - 2 * t;          // +1 (north pole) -> -1 (south pole)
+    if (y > -0.05) continue;      // skip equator + upper hemisphere
+    const r = Math.sqrt(1 - y * y);
+    const theta = i * Math.PI * 2 / phi;
+    out.push({ x: r * Math.cos(theta), y, z: r * Math.sin(theta) });
+  }
+  return out;
+}
+export const DRILL_SLOTS = _generateLowerSpiral(60);
+export const DRILL_SLOT_SURFACE_R = 7.6; // radius at which drills sit (matches lumpy asteroid hull)
 
 // --- caps / fleet abstraction ---
 export const DRILL_CAP          = 256; // instanced capacity for drills

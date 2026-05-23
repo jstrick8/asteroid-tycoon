@@ -233,6 +233,31 @@ export function createChunkInstancedMesh(capacity = C.CHUNK_POOL) {
   return mesh;
 }
 
+// ---------- MINING PAD (one disc per drill slot, dim glow) ----------
+/* Faint emissive disc at each predefined drill slot so the player sees
+   exactly where drills go before they build one. Empty slots glow softly;
+   occupied slots get hidden behind the drill base. */
+export function createMiningPadInstancedMesh(capacity = 64) {
+  const geo = new THREE.CylinderGeometry(0.7, 0.7, 0.04, 16);
+  // ringed appearance — emit only at the outer edge feels cleaner but a
+  // flat thin disc reads fine and costs nothing extra
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x0a1a2a,
+    emissive: 0x46c8ff,
+    emissiveIntensity: 0.45,
+    metalness: 0.4,
+    roughness: 0.55,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+  });
+  const mesh = instanced(geo, mat, capacity);
+  mesh.name = "mining-pads";
+  mesh.count = 0;
+  mesh.renderOrder = 0;
+  return mesh;
+}
+
 // ---------- DRILL CLICK HITBOX (invisible, generous picking target) ----------
 /* The visible drill is small; making the click target as small as the
    visible mesh is frustrating. This hitbox is a transparent sphere ~3x the

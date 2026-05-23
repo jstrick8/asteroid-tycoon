@@ -18,6 +18,7 @@ import {
   createDustInstancedMesh, createSmokeInstancedMesh, createCrateInstancedMesh,
   createLaunchPad, createRocket, createResearchLab, createWarpGate, WHEEL_OFFSETS,
   createChunkInstancedMesh, createDrillHaloInstancedMesh, createDrillHitboxInstancedMesh,
+  createMiningPadInstancedMesh,
 } from "./entities.js";
 import {
   state, prev, upgradeLevel, warpUnlocked,
@@ -30,7 +31,7 @@ import * as ui from "./ui.js";
 
 let renderer, scene, camera, controls;
 let homeBody, asteroid, starfield, smelter;
-let drillBody, drillBit, drillLight, drillHalo, drillHitbox;
+let drillBody, drillBit, drillLight, drillHalo, drillHitbox, miningPads;
 let roverBody, roverWheel, roverHeadlight, oreMesh, dustMesh;
 let crateMesh, smokeMesh, researchLab, sun, warpGate;
 let chunkMesh;
@@ -244,6 +245,12 @@ export function init(canvas) {
   drillHitbox = createDrillHitboxInstancedMesh();
   homeBody.add(drillHitbox);
 
+  // mining pads at every predefined drill slot. populated once at init
+  // since slot positions never change.
+  miningPads = createMiningPadInstancedMesh(C.DRILL_SLOTS.length);
+  homeBody.add(miningPads);
+  buildMiningPadMatrices();
+
   // research lab — visible from the start, seated on the surface
   researchLab = createResearchLab();
   _dir.set(C.LAB_POS.x, C.LAB_POS.y, C.LAB_POS.z).normalize();
@@ -315,7 +322,22 @@ export function init(canvas) {
   return { renderer, scene, camera, controls };
 }
 
-export function pickPlacement() { return pickSurfacePoint(asteroid); }
+/* Drills snap to dedicated slots on the lower hemisphere. The slot index
+   is the current drill count so each new drill fills the next free slot
+   in the spiral. If the player builds more drills than slots exist (rare),
+   we fall back to the old random-triangle picker. */
+export function pickPlacement() {
+  const i = state.drills.length;
+  if (i < C.DRILL_SLOTS.length) {
+    const s = C.DRILL_SLOTS[i];
+    const r = C.DRILL_SLOT_SURFACE_R;
+    return {
+      pos: { x: s.x * r, y: s.y * r, z: s.z * r },
+      nrm: { x: s.x, y: s.y, z: s.z },
+    };
+  }
+  return pickSurfacePoint(asteroid);
+}
 
 /* Build a launchpad mesh + rocket pair at slot `i`. Each pad has its own
    frame (position/normal/quaternion) so rockets spread around the upper
@@ -530,6 +552,29 @@ function basisQuat(up, fwd, outQuat) {
   _right.crossVectors(_fwd, up).normalize();
   _basis.makeBasis(_right, up, _fwd); // model: +X right, +Y up, +Z forward
   outQuat.setFromRotationMatrix(_basis);
+}
+
+// ---- mining pad placement (one-time at init) ----
+/* Drop a thin glowing disc at every drill slot on the lower hemisphere.
+   The pad sits slightly above the (lumpy) asteroid surface so it's always
+   visible. The slot's outward normal is the unit vector from origin. */
+function buildMiningPadMatrices() {
+  if (!miningPads) return;
+  const slots = C.DRILL_SLOTS;
+  const n = slots.length;
+  miningPads.count = n;
+  for (let i = 0; i < n; i++) {
+    const s = slots[i];
+    const r = C.DRILL_SLOT_SURFACE_R + 0.02; // sit a hair above the surface
+    _pos.set(s.x * r, s.y * r, s.z * r);
+    const norm = _v.set(s.x, s.y, s.z); // unit length
+    _q.setFromUnitVectors(UP, norm);    // disc face perpendicular to surface
+    _scaleA.set(1, 1, 1);
+    _m.compose(_pos, _q, _scaleA);
+    miningPads.setMatrixAt(i, _m);
+  }
+  miningPads.instanceMatrix.needsUpdate = true;
+  miningPads.boundingSphere = null;
 }
 
 // ---- pockmarks: visible wear on the asteroid surface ----
