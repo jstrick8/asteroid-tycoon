@@ -238,7 +238,7 @@ export function createChunkInstancedMesh(capacity = C.CHUNK_POOL) {
    exactly where drills go before they build one. Empty slots glow softly;
    occupied slots get hidden behind the drill base. */
 export function createMiningPadInstancedMesh(capacity = 64) {
-  const geo = new THREE.CylinderGeometry(0.7, 0.7, 0.04, 16);
+  const geo = new THREE.CylinderGeometry(0.45, 0.45, 0.04, 16);
   // ringed appearance — emit only at the outer edge feels cleaner but a
   // flat thin disc reads fine and costs nothing extra
   const mat = new THREE.MeshStandardMaterial({

@@ -48,24 +48,28 @@ export const ROVER_HOME    = { x: 0, y: 1, z: 0, r: 8.0 }; // dir (unit-ish) + r
 // --- mining zone (dedicated drill slots on the lower hemisphere) ---
 /* Drills used to land on random asteroid triangles, leaving an untidy
    scatter all over the surface. They now snap to a pre-computed Fibonacci
-   spiral on the LOWER hemisphere — top half stays clean for the smelter,
-   rockets, lab, and warp gate. Player gets a clean visual split between
-   "industrial" (top) and "extraction" (bottom). */
-function _generateLowerSpiral(n) {
+   spiral on a BAND below the equator — not the full hemisphere, since
+   slots near the south pole get hidden behind the asteroid from most
+   camera angles. Constrains y to [Y_FAR, Y_NEAR] (just below equator down
+   to a comfortable mid-belt) so every drill stays in clear view. */
+const _Y_NEAR = -0.12;  // upper bound (just below equator)
+const _Y_FAR  = -0.62;  // lower bound (mid-belt — well above south pole)
+function _generateMiningBand(n) {
   const phi = (1 + Math.sqrt(5)) / 2;
   const out = [];
-  // walk an extended spiral on the full sphere and keep the lower-hemi points
-  for (let i = 0; out.length < n && i < n * 3; i++) {
-    const t = (i + 0.5) / (n * 2);
-    const y = 1 - 2 * t;          // +1 (north pole) -> -1 (south pole)
-    if (y > -0.05) continue;      // skip equator + upper hemisphere
+  // walk a finer-grained spiral and only keep points inside our band
+  for (let i = 0; out.length < n && i < n * 6; i++) {
+    const t = (i + 0.5) / (n * 3);
+    const y = 1 - 2 * t;
+    if (y > _Y_NEAR || y < _Y_FAR) continue;
     const r = Math.sqrt(1 - y * y);
     const theta = i * Math.PI * 2 / phi;
     out.push({ x: r * Math.cos(theta), y, z: r * Math.sin(theta) });
   }
   return out;
 }
-export const DRILL_SLOTS = _generateLowerSpiral(60);
+// 40 slots packed tightly in the visible mining band
+export const DRILL_SLOTS = _generateMiningBand(40);
 export const DRILL_SLOT_SURFACE_R = 7.6; // radius at which drills sit (matches lumpy asteroid hull)
 
 // --- caps / fleet abstraction ---

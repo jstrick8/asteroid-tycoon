@@ -120,7 +120,7 @@ const ORE_COLOR = new THREE.Color(0.6, 0.78, 1.0);
 
 // global visual size of entities relative to the asteroid (1.0 = original).
 // Smaller numbers make the asteroid feel bigger by contrast.
-const DRILL_SCALE = 0.60;
+const DRILL_SCALE = 0.40;
 const ROVER_SCALE = 0.60;
 
 // stockpile + cargo cube layouts
