@@ -15,8 +15,8 @@ export const UPGRADES = {
   // ---- MINING ----
   drillPower:    { cat: "mining", name: "Drill Power",       base: 60,   max: 50, desc: "+10% ore per drill cycle" },
   drillSpeed:    { cat: "mining", name: "Drill Speed",       base: 80,   max: 30, desc: "-5% drill cycle time (min 0.5s)" },
-  stockpile:     { cat: "mining", name: "Larger Stockpiles", base: 150,  max: 5,  desc: "Drills hold more before pausing: 10 → 20 → 40 → 80 → 160 → 320" },
-  autoSurveyor:  { cat: "mining", name: "Auto-Surveyor",     base: 1500, max: 1,  desc: "Drills find richer nodes (+10% ore, permanent)" },
+  stockpile:     { cat: "mining", name: "Larger Stockpiles", base: 150,  max: 15, desc: "Drills hold more before pausing — capacity roughly doubles each level (10 → 20 → 40 → … → 320,000)" },
+  autoSurveyor:  { cat: "mining", name: "Auto-Surveyor",     base: 1500, max: 11, desc: "Drills find richer nodes — +10% ore per level (compounds)" },
 
   // ---- FLEET ----
   roverSpeed:     { cat: "fleet", name: "Rover Speed",      base: 200,   max: 40, unlock: 50000,  desc: "+5% rover speed" },

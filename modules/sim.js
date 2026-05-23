@@ -140,7 +140,12 @@ export function researchUnlocked() { return state.lifetimeEarnings >= C.RESEARCH
 export function roverUnlocked() { return state.lifetimeEarnings >= C.ROVER_UNLOCK_LIFETIME; }
 
 // Stockpile / capacity / rocket tiers — the index is the upgrade level
-const STOCKPILE_TIERS = [10, 20, 40, 80, 160, 320];
+// Stockpile capacity per Larger Stockpiles level. Roughly doubles each
+// level so the curve stays exponential through the new extended levels.
+const STOCKPILE_TIERS = [
+  10, 20, 40, 80, 160, 320,
+  640, 1280, 2560, 5120, 10000, 20000, 40000, 80000, 160000, 320000,
+];
 // Tiered capacity per Rover Capacity level — first 7 keep the original
 // curve, then extended out 10 more steps for the bumped max level.
 const CAPACITY_TIERS  = [1, 3, 5, 8, 12, 20, 30, 45, 65, 90, 120, 160, 210, 275, 350, 450, 600];
@@ -167,7 +172,10 @@ export function recomputeStats() {
     * (1 + 0.01 * Object.keys(state.achievements).length);
 
   // ---- mining (+10% per level instead of +50% → many more meaningful levels) ----
-  s.drillOrePerCycle = Math.pow(1.10, L("drillPower")) * (L("autoSurveyor") > 0 ? 1.1 : 1)
+  // autoSurveyor is now multi-level: +10% per level (compounds). Previously
+  // a single binary +10% — level 1 keeps the same effect for existing saves.
+  s.drillOrePerCycle = Math.pow(1.10, L("drillPower"))
+    * Math.pow(1.10, L("autoSurveyor"))
     * sb(b.drillPower) * Math.pow(1.5, W("permDrillPower"));
   s.drillCycleTime = Math.max(0.5, C.PROD_INTERVAL * Math.pow(0.95, L("drillSpeed")) / sb(b.drillSpeed));
   s.stockpileMax = STOCKPILE_TIERS[Math.min(L("stockpile"), STOCKPILE_TIERS.length - 1)];
