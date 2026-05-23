@@ -550,6 +550,11 @@ function updateChunks(now) {
   }
   chunkMesh.instanceMatrix.needsUpdate = true;
   if (chunkMesh.instanceColor) chunkMesh.instanceColor.needsUpdate = true;
+  // InstancedMesh.raycast caches boundingSphere from the first call and never
+  // updates it. Chunks move from origin to hover positions, so the cached
+  // sphere (centered at origin) won't include them — invalidate every frame
+  // so the next click recomputes against current positions.
+  chunkMesh.boundingSphere = null;
 }
 
 // ---- drill render caches ----
